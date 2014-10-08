@@ -40,58 +40,7 @@ namespace URDF
             return obj;
         }
 
-        public void WriteURDFToWriter(XmlWriter URDFWriter)
-        {
-            URDFWriter.WriteStartDocument(false);
-            URDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
-            URDFWriter.WriteStartElement("robot");
-            URDFWriter.WriteAttributeString("name", this.Name);
-
-            foreach (Link link in Links)
-            {
-                link.PrintLinkTag((XmlTextWriter)URDFWriter);
-            }
-
-            foreach (Joint joint in Joints)
-            {
-                joint.PrintJointTag((XmlTextWriter)URDFWriter);
-            }
-
-            URDFWriter.WriteEndElement();
-
-            //Write the XML to file and close the writer
-            URDFWriter.Flush();
-        }
-
-        public String WriteURDFToString()
-        {
-            using (var sw = new StringWriter())
-            {
-                using (var URDFWriter = XmlWriter.Create(sw))
-                {
-                    WriteURDFToWriter(URDFWriter);
-                  
-                }
-                return sw.ToString();
-            }
-        }
-
         public void WriteURDFToFile(string filename)
-        {
-            XmlTextWriter URDFWriter = new XmlTextWriter(filename, null);
-
-            WriteURDFToWriter((XmlWriter)URDFWriter);
-
-            URDFWriter.Formatting = Formatting.Indented;
-
-            //Write the XML to file and close the writer
-            URDFWriter.Flush();
-            URDFWriter.Close();
-            if (URDFWriter != null)
-                URDFWriter.Close();
-        }
-
-        public void WriteURDFToFileOld(string filename)
         {
             XmlTextWriter URDFWriter = new XmlTextWriter(filename, null);
             URDFWriter.Formatting = Formatting.Indented;
