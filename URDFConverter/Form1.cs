@@ -17,7 +17,6 @@ namespace URDFConverter
     public partial class Form1 : Form
     {
         Inventor.Application _invApp;
-        Robot robo;
         bool _started = false;
 
         public Form1()
@@ -88,37 +87,16 @@ namespace URDFConverter
 
             robot.Joints.Add((Joint)joint1.Clone());
 
-            robot.WriteURDFToFile("C:\\Users\\W.Stott\\Documents\\URDF\\robo.xml");
+            robot.WriteURDFToFile("hubo.xml");
             */
 
             #endregion
 
-            //Test for inventor document, set some UI stuff.
-            Reload();
+            WriteURDF("HuboPlus.xml");
+
         }
 
-        public void Reload()
-        {
-            //Start robot
-            robo = new Robot(_invApp.ActiveDocument.DisplayName);
-
-            //Did we recieve an assembly document?
-            if (_invApp.ActiveDocumentType == DocumentTypeEnum.kAssemblyDocumentObject) {
-                this.label1.Text = "Found inventor assembly: " + _invApp.ActiveDocument.DisplayName;
-                this.buttonGen.Show();
-            }
-            else
-            {
-                this.label1.Text = "Found inventor part, please open an assembly document.";
-            }
-        }
-
-        public void RefreshView()
-        {
-            
-        }
-
-        public void WriteURDF()
+        public void WriteURDF(string xmlfilename)
         {
             UnitsOfMeasure oUOM = _invApp.ActiveDocument.UnitsOfMeasure;
             AssemblyDocument oAsmDoc = (AssemblyDocument)_invApp.ActiveDocument;
@@ -127,39 +105,33 @@ namespace URDFConverter
             string ParentName, AbsolutePosition, name, mirname, mirParentName;
             double[] ParentCOM, Offset;
 
+            Robot hubo = new Robot("HuboPlus");
+
             foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
             {
                 // Generate links from available subassemblies in main assembly.
-
-                //New Link
-                robo.Links.Add(new Link(oCompOccur.Name));
-                int c = robo.Links.Count - 1;
-
-                //Find and set parent link
-                for (int i = 0; i < robo.Links.Count; i++)
+                hubo.Links.Add(new Link(oCompOccur.Name));
+                int c = hubo.Links.Count - 1;
+                for (int i = 0; i < hubo.Links.Count; i++)
                 {
-                    if (String.Equals(robo.Links[i].Name, ReturnParentName(oCompOccur)))
-                        robo.Links[c].Parent = robo.Links[i];
+                    if (String.Equals(hubo.Links[i].Name, ReturnParentName(oCompOccur)))
+                        hubo.Links[c].Parent = hubo.Links[i];
                 }
 
-                //If link has a parent
-                if (robo.Links[c].Parent != null)
+                if (hubo.Links[c].Parent != null)
                 {
-                    //Define a joint
-                    robo.Joints.Add(new Joint(FormatJointName(robo.Links[c].Name), JointType.Revolute, robo.Links[c].Parent, robo.Links[c]));
-                    int j = robo.Joints.Count - 1;
-
-                    //Parse joint axis
-                    switch (robo.Joints[j].Name[robo.Joints[j].Name.Length - 1])
+                    hubo.Joints.Add(new Joint(FormatJointName(hubo.Links[c].Name), JointType.Revolute, hubo.Links[c].Parent, hubo.Links[c]));
+                    int j = hubo.Joints.Count - 1;
+                    switch (hubo.Joints[j].Name[hubo.Joints[j].Name.Length - 1])
                     {
                         case 'R':
-                            robo.Joints[j].Axis = new double[] { 1, 0, 0 };
+                            hubo.Joints[j].Axis = new double[] { 1, 0, 0 };
                             break;
                         case 'P':
-                            robo.Joints[j].Axis = new double[] { 0, 1, 0 };
+                            hubo.Joints[j].Axis = new double[] { 0, 1, 0 };
                             break;
                         case 'Y':
-                            robo.Joints[j].Axis = new double[] { 0, 0, 1 };
+                            hubo.Joints[j].Axis = new double[] { 0, 0, 1 };
                             break;
                         default:
                             break;
@@ -169,12 +141,13 @@ namespace URDFConverter
                 // Get mass properties for each link.
                 double[] iXYZ = new double[6];
                 oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
-                robo.Links[c].Inertial = new Inertial(oCompOccur.MassProperties.Mass, iXYZ);
-                robo.Links[c].Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
+                hubo.Links[c].Inertial = new Inertial(oCompOccur.MassProperties.Mass, iXYZ);
+                hubo.Links[c].Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
 
                 // Set shape properties for each link.
-                robo.Links[c].Visual = new Visual(new Mesh("package://" + robo.Name + "/" + robo.Links[c].Name + ".stl"));
+                hubo.Links[c].Visual = new Visual(new Mesh("package://" + hubo.Name + "/" + hubo.Links[c].Name + ".stl"));
             }
+
 
         }
 
@@ -279,7 +252,7 @@ namespace URDFConverter
             // Match Bodies to actually export based on naming convention
             int Count;
 
-            Match REMatches = Regex.Match(strData, "[RPY]:[0-9]", RegexOptions.IgnoreCase);
+            Match REMatches = Regex.Match(strData, "[LRTH][HSKAEWNRPYBD][RPY]", RegexOptions.IgnoreCase);
 
             Count = REMatches.Length;
 
@@ -298,30 +271,7 @@ namespace URDFConverter
             return null;
         }
 
-        private void buttonGen_Click(object sender, EventArgs e)
-        {
-            //generate a new URDF
-            WriteURDF();
-        }
 
-        private void buttonSave_Click(object sender, EventArgs e)
-        {
-            // Save the URDF
-            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-
-            saveFileDialog1.Filter = "URDF File (ROS) (*.xml)|*.xml";
-            saveFileDialog1.RestoreDirectory = true;
-            if (saveFileDialog1.ShowDialog() == DialogResult.OK)
-            {
-                robo.WriteURDFToFile(saveFileDialog1.FileName);
-            }
-        }
-
-        private void buttonReload_Click(object sender, EventArgs e)
-        {
-            // Reload info, and reset URDF
-            Reload();
-        }
 
     }
 }
