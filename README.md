@@ -8,4 +8,6 @@ Added:
 *      Mesh colliders and visuals only.
 * STL export
 
-Lots of stuff from original URDF converter left.
+Lots of stuff from original URDF converter left, it's a little messy in there.
+
+To build, just open the .sln with Visual Studio, and click run or build.
