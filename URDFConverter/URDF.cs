@@ -7,16 +7,17 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Xml;
 using System.Xml.Schema;
 
-namespace URDF
+namespace SDF
 {
     #region Robot
     /// <summary>
-    /// Defines the URDF Robot model.
+    /// Defines the SDF Robot model.
     /// </summary>
     [Serializable]
     public class Robot : ICloneable
     {
         public string Name { get; set; }
+        public Pose Pose = new Pose(0,0,0);
         public List<Link> Links = new List<Link>();
         public List<Joint> Joints = new List<Joint>();
 
@@ -40,96 +41,101 @@ namespace URDF
             return obj;
         }
 
-        public void WriteURDFToWriter(XmlWriter URDFWriter)
+        public void WriteSDFToWriter(XmlWriter SDFWriter)
         {
-            URDFWriter.WriteStartDocument(false);
-            URDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
-            URDFWriter.WriteStartElement("robot");
-            URDFWriter.WriteAttributeString("name", this.Name);
+            SDFWriter.WriteStartDocument(false);
+            SDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
+            SDFWriter.WriteStartElement("sdf");
+            SDFWriter.WriteAttributeString("version", "1.5");
+            SDFWriter.WriteStartElement("model");
+            SDFWriter.WriteAttributeString("name", this.Name);
+            Pose.PrintPoseTag((XmlTextWriter)SDFWriter);
 
             foreach (Link link in Links)
             {
-                link.PrintLinkTag((XmlTextWriter)URDFWriter);
+                link.PrintLinkTag((XmlTextWriter)SDFWriter);
             }
 
             foreach (Joint joint in Joints)
             {
-                joint.PrintJointTag((XmlTextWriter)URDFWriter);
+                joint.PrintJointTag((XmlTextWriter)SDFWriter);
             }
 
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();//</model>
+            SDFWriter.WriteEndElement();//</sdf>
 
             //Write the XML to file and close the writer
-            URDFWriter.Flush();
+            SDFWriter.Flush();
         }
 
-        public String WriteURDFToString()
+        public String WriteSDFToString()
         {
             using (var sw = new StringWriter())
             {
-                using (var URDFWriter = XmlWriter.Create(sw))
+                using (var SDFWriter = XmlWriter.Create(sw))
                 {
-                    WriteURDFToWriter(URDFWriter);
+                    WriteSDFToWriter(SDFWriter);
                   
                 }
                 return sw.ToString();
             }
         }
 
-        public void WriteURDFToFile(string filename)
+        public void WriteSDFToFile(string filename)
         {
-            XmlTextWriter URDFWriter = new XmlTextWriter(filename, null);
+            XmlTextWriter SDFWriter = new XmlTextWriter(filename, null);
 
-            WriteURDFToWriter((XmlWriter)URDFWriter);
+            WriteSDFToWriter((XmlWriter)SDFWriter);
 
-            URDFWriter.Formatting = Formatting.Indented;
+            SDFWriter.Formatting = Formatting.Indented;
 
             //Write the XML to file and close the writer
-            URDFWriter.Flush();
-            URDFWriter.Close();
-            if (URDFWriter != null)
-                URDFWriter.Close();
+            //SDFWriter.Flush();
+            SDFWriter.Close();
+            if (SDFWriter != null)
+                SDFWriter.Close();
         }
 
-        public void WriteURDFToFileOld(string filename)
+        public void WriteSDFToFileOld(string filename)
         {
-            XmlTextWriter URDFWriter = new XmlTextWriter(filename, null);
-            URDFWriter.Formatting = Formatting.Indented;
-            URDFWriter.WriteStartDocument(false);
-            URDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
-            URDFWriter.WriteStartElement("robot");
-            URDFWriter.WriteAttributeString("name", this.Name);
+            XmlTextWriter SDFWriter = new XmlTextWriter(filename, null);
+            SDFWriter.Formatting = Formatting.Indented;
+            SDFWriter.WriteStartDocument(false);
+            SDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
+            SDFWriter.WriteStartElement("robot");
+            SDFWriter.WriteAttributeString("name", this.Name);
 
             foreach (Link link in Links)
             {
-                link.PrintLinkTag(URDFWriter);
+                link.PrintLinkTag(SDFWriter);
             }
 
             foreach (Joint joint in Joints)
             {
-                joint.PrintJointTag(URDFWriter);
+                joint.PrintJointTag(SDFWriter);
             }
 
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
 
             //Write the XML to file and close the writer
-            URDFWriter.Flush();
-            URDFWriter.Close();
-            if (URDFWriter != null)
-                URDFWriter.Close();
+            SDFWriter.Flush();
+            SDFWriter.Close();
+            if (SDFWriter != null)
+                SDFWriter.Close();
         }
     }
     #endregion
 
     #region Link
     /// <summary>
-    /// Defines the URDF Link model.
+    /// Defines the SDF Link model.
     /// </summary>
     [Serializable]
     public class Link : ICloneable
     {
         public string Name { get; set; }
         public Link Parent { get; set; }
+        public Pose Pose { get; set; }
         public Inertial Inertial { get; set; }
         public Visual Visual { get; set; }
         public Collision Collision { get; set; }
@@ -155,7 +161,7 @@ namespace URDF
             return obj;
         }
 
-        public void PrintLinkTag(XmlTextWriter URDFWriter)
+        public void PrintLinkTag(XmlTextWriter SDFWriter)
         {
             /* <link name="...">
              *     <inertial>
@@ -169,21 +175,56 @@ namespace URDF
              *     </collision>
              * </link>
              */
-            URDFWriter.WriteStartElement("link");
-            URDFWriter.WriteAttributeString("name", this.Name);
+            SDFWriter.WriteStartElement("link");
+            SDFWriter.WriteAttributeString("name", this.Name);
+            if (this.Pose != null)
+            {
+                this.Pose.PrintPoseTag(SDFWriter);
+            }
             if (this.Inertial != null)
             {
-                this.Inertial.PrintInertialTag(URDFWriter);
+                this.Inertial.PrintInertialTag(SDFWriter);
             }
             if (this.Visual != null)
             {
-                this.Visual.PrintVisualTag(URDFWriter);
+                this.Visual.PrintVisualTag(SDFWriter, this.Name);
             }
             if (this.Collision != null)
             {
-                this.Collision.PrintCollisionTag(URDFWriter);
+                this.Collision.PrintCollisionTag(SDFWriter, this.Name);
             }
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
+        }
+    }
+
+    /// <summary>
+    /// Link position and rotation.
+    /// </summary>
+    [Serializable]
+    public class Pose
+    {
+        public double[] Position { get; set; }
+        public double[] Rotation { get; set; }
+
+        public Pose(double x, double y, double z, double Ex, double Ey, double Ez)
+        {
+            Position = new double[3] {x,y,z};
+            Rotation = new double[3] {Ex,Ey,Ez};
+        }
+
+        public Pose(double x, double y, double z)
+        {
+            Position = new double[3] { x, y, z };
+            Rotation = new double[3] { 0, 0, 0 };
+        }
+
+        public void PrintPoseTag(XmlTextWriter SDFWriter)
+        {
+            SDFWriter.WriteStartElement("pose");
+            string pos = Position[0].ToString() + " " + Position[1].ToString() + " " + Position[2].ToString();
+            string rot = Rotation[0].ToString() + " " + Rotation[1].ToString() + " " + Rotation[2].ToString();
+            SDFWriter.WriteRaw(pos + " " + rot);
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -229,7 +270,7 @@ namespace URDF
                 { inertiaVector[2], inertiaVector[4], inertiaVector[5] } };
         }
 
-        public void PrintInertialTag(XmlTextWriter URDFWriter)
+        public void PrintInertialTag(XmlTextWriter SDFWriter)
         {
             /* <inertial>
              *     <origin xyz="# # #" rpy="# # #"/>
@@ -237,20 +278,17 @@ namespace URDF
              *     <inertia ixx="#"  ixy="#"  ixz="#" iyy="#" iyz="#" izz="#" />
              * </inertial>
              */
-            URDFWriter.WriteStartElement("inertial");
-            PrintOriginTag(URDFWriter);
-            URDFWriter.WriteStartElement("mass");
-            URDFWriter.WriteAttributeString("value", this.Mass.ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteStartElement("inertia");
-            URDFWriter.WriteAttributeString("ixx", this.InertiaVector[0].ToString());
-            URDFWriter.WriteAttributeString("ixy", this.InertiaVector[1].ToString());
-            URDFWriter.WriteAttributeString("ixz", this.InertiaVector[2].ToString());
-            URDFWriter.WriteAttributeString("iyy", this.InertiaVector[3].ToString());
-            URDFWriter.WriteAttributeString("iyz", this.InertiaVector[4].ToString());
-            URDFWriter.WriteAttributeString("izz", this.InertiaVector[5].ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("inertial");
+            SDFWriter.WriteElementString("mass", this.Mass.ToString());
+            SDFWriter.WriteStartElement("inertia");
+            SDFWriter.WriteElementString("ixx", this.InertiaVector[0].ToString());
+            SDFWriter.WriteElementString("ixy", this.InertiaVector[1].ToString());
+            SDFWriter.WriteElementString("ixz", this.InertiaVector[2].ToString());
+            SDFWriter.WriteElementString("iyy", this.InertiaVector[3].ToString());
+            SDFWriter.WriteElementString("iyz", this.InertiaVector[4].ToString());
+            SDFWriter.WriteElementString("izz", this.InertiaVector[5].ToString());
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -274,7 +312,7 @@ namespace URDF
             this.Material = material;
         }
 
-        public void PrintVisualTag(XmlTextWriter URDFWriter)
+        public void PrintVisualTag(XmlTextWriter SDFWriter, String linkName)
         {
             /* <visual>
              *     <origin ... />
@@ -286,14 +324,14 @@ namespace URDF
              *     </material>
              * </visual>
              */
-            URDFWriter.WriteStartElement("visual");
-            PrintOriginTag(URDFWriter);
-            this.Shape.PrintGeometryTag(URDFWriter);
+            SDFWriter.WriteStartElement("visual");
+            SDFWriter.WriteAttributeString("name", linkName + "_vis");
+            this.Shape.PrintGeometryTag(SDFWriter);
             if (Material != null)
             {
-                this.Material.PrintMaterialTag(URDFWriter);
+                this.Material.PrintMaterialTag(SDFWriter);
             }
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -312,21 +350,21 @@ namespace URDF
             this.ColorRGBA = colorRGBA;
         }
 
-        public void PrintMaterialTag(XmlTextWriter URDFWriter)
+        public void PrintMaterialTag(XmlTextWriter SDFWriter)
         {
             /* <material name="...">
              *     <color rgba="# # # #"/>
              * </material>
              */
-            URDFWriter.WriteStartElement("material");
-            URDFWriter.WriteAttributeString("name", this.Name);
-            URDFWriter.WriteStartElement("color");
-            URDFWriter.WriteAttributeString("rgba", this.ColorRGBA[0].ToString() + " "
+            SDFWriter.WriteStartElement("material");
+            SDFWriter.WriteAttributeString("name", this.Name);
+            SDFWriter.WriteStartElement("color");
+            SDFWriter.WriteAttributeString("rgba", this.ColorRGBA[0].ToString() + " "
                 + this.ColorRGBA[1].ToString() + " "
                 + this.ColorRGBA[2].ToString() + " "
                 + this.ColorRGBA[3].ToString() + " ");
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
 
     }
@@ -344,7 +382,7 @@ namespace URDF
             this.Shape = shape;
         }
 
-        public void PrintCollisionTag(XmlTextWriter URDFWriter)
+        public void PrintCollisionTag(XmlTextWriter SDFWriter, String linkName)
         {
             /* <collision>
              *     <origin ... />
@@ -353,10 +391,10 @@ namespace URDF
              *     </geometry>
              * </collision>
              */
-            URDFWriter.WriteStartElement("collision");
-            PrintOriginTag(URDFWriter);
-            this.Shape.PrintGeometryTag(URDFWriter);
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("collision");
+            SDFWriter.WriteAttributeString("name", linkName + "_col");
+            this.Shape.PrintGeometryTag(SDFWriter);
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -369,21 +407,21 @@ namespace URDF
         public double[] XYZ { get; set; }
         public double[] RPY { get; set; }
 
-        public void PrintOriginTag(XmlTextWriter URDFWriter)
+        public void PrintOriginTag(XmlTextWriter SDFWriter)
         {
             // <origin xyz="# # #" rpy="# # #"/>
             if (XYZ != null && RPY != null)
             {
-                URDFWriter.WriteStartElement("origin");
+                SDFWriter.WriteStartElement("origin");
                 if (XYZ != null)
                 {
-                    URDFWriter.WriteAttributeString("xyz", XYZ[0].ToString() + " " + XYZ[1].ToString() + " " + XYZ[2].ToString());
+                    SDFWriter.WriteAttributeString("xyz", XYZ[0].ToString() + " " + XYZ[1].ToString() + " " + XYZ[2].ToString());
                 }
                 if (RPY != null)
                 {
-                    URDFWriter.WriteAttributeString("rpy", RPY[0].ToString() + " " + RPY[1].ToString() + " " + RPY[2].ToString());
+                    SDFWriter.WriteAttributeString("rpy", RPY[0].ToString() + " " + RPY[1].ToString() + " " + RPY[2].ToString());
                 }
-                URDFWriter.WriteEndElement();
+                SDFWriter.WriteEndElement();
             }
         }
     }
@@ -418,8 +456,8 @@ namespace URDF
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="URDFWriter"></param>
-        public virtual void PrintGeometryTag(XmlTextWriter URDFWriter)
+        /// <param name="SDFWriter"></param>
+        public virtual void PrintGeometryTag(XmlTextWriter SDFWriter)
         {
             // Insert code into inherited classes.
         }
@@ -440,17 +478,17 @@ namespace URDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter URDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
         {
             /* <geometry>
              *     <box size="# # #"/>
              * </geometry>
              */
-            URDFWriter.WriteStartElement("geometry");
-            URDFWriter.WriteStartElement("box");
-            URDFWriter.WriteAttributeString("size", Size[0].ToString() + " " + Size[1].ToString() + " " + Size[2].ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("geometry");
+            SDFWriter.WriteStartElement("box");
+            SDFWriter.WriteAttributeString("size", Size[0].ToString() + " " + Size[1].ToString() + " " + Size[2].ToString());
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -465,18 +503,18 @@ namespace URDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter URDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
         {
             /* <geometry>
              *     <cylinder radius="#" length="#"/>
              * </geometry>
              */
-            URDFWriter.WriteStartElement("geometry");
-            URDFWriter.WriteStartElement("cylinder");
-            URDFWriter.WriteAttributeString("radius", Radius.ToString());
-            URDFWriter.WriteAttributeString("length", Length.ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("geometry");
+            SDFWriter.WriteStartElement("cylinder");
+            SDFWriter.WriteAttributeString("radius", Radius.ToString());
+            SDFWriter.WriteAttributeString("length", Length.ToString());
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -491,17 +529,17 @@ namespace URDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter URDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
         {
             /* <geometry>
              *     <sphere radius="#"/>
              * </geometry>
              */
-            URDFWriter.WriteStartElement("geometry");
-            URDFWriter.WriteStartElement("cylinder");
-            URDFWriter.WriteAttributeString("radius", Radius.ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("geometry");
+            SDFWriter.WriteStartElement("cylinder");
+            SDFWriter.WriteAttributeString("radius", Radius.ToString());
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
 
     }
@@ -512,6 +550,7 @@ namespace URDF
     [Serializable]
     public class Mesh : Shape
     {
+
         public Mesh(string filename)
             : base(null, 0, 0, filename, 1)
         {
@@ -522,18 +561,21 @@ namespace URDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter URDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
         {
             /* <geometry>
              *     <sphere filename="package://..." scale="#"/>
              * </geometry>
              */
-            URDFWriter.WriteStartElement("geometry");
-            URDFWriter.WriteStartElement("mesh");
-            URDFWriter.WriteAttributeString("filename", Filename);
-            URDFWriter.WriteAttributeString("scale", Scale.ToString());
-            URDFWriter.WriteEndElement();
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("geometry");
+            SDFWriter.WriteStartElement("mesh");
+            SDFWriter.WriteElementString("uri", Filename);
+            if (this.Scale != null && this.Scale != 1)
+            {
+                SDFWriter.WriteElementString("scale", this.Scale.ToString());
+            }
+            SDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -541,7 +583,7 @@ namespace URDF
 
     #region Joint
     /// <summary>
-    /// Defines the URDF Joint model.
+    /// Defines the SDF Joint model.
     /// </summary>
     [Serializable]
     public class Joint : Origin
@@ -564,7 +606,7 @@ namespace URDF
             if (this.JointType == JointType.Revolute || this.JointType == JointType.Prismatic)
             {
                 // Default values for limit that can be modified later.
-                this.Limit = new Limit(1.0, 30.0, 0.0, 180.0);
+                //this.Limit = new Limit(1.0, 30.0, 0.0, 180.0);
             }
         }
 
@@ -575,7 +617,7 @@ namespace URDF
             if (this.JointType == JointType.Revolute || this.JointType == JointType.Prismatic)
             {
                 // Default values for limit that can be modified later.
-                this.Limit = new Limit(1.0, 30.0, 0.0, 180.0);
+                //this.Limit = new Limit(1.0, 30.0, 0.0, 180.0);
             }
             this.Parent = parent;
             this.Child = child;
@@ -596,7 +638,7 @@ namespace URDF
             return obj;
         }
 
-        public void PrintJointTag(XmlTextWriter URDFWriter)
+        public void PrintJointTag(XmlTextWriter SDFWriter)
         {
             /* <joint name="..." type="...">
              *     <origin ... />
@@ -610,53 +652,54 @@ namespace URDF
              *     <safety_controller
              * </joint>
              */
-            URDFWriter.WriteStartElement("joint");
-            URDFWriter.WriteAttributeString("name", this.Name);
-            URDFWriter.WriteAttributeString("type", this.JointType.Type);
-            PrintOriginTag(URDFWriter);
+            SDFWriter.WriteStartElement("joint");
+            SDFWriter.WriteAttributeString("name", this.Name);
+            SDFWriter.WriteAttributeString("type", this.JointType.Type);
             if (this.Parent != null)
             {
-                URDFWriter.WriteStartElement("parent");
-                URDFWriter.WriteAttributeString("link", this.Parent.Name);
-                URDFWriter.WriteEndElement();
+                SDFWriter.WriteStartElement("parent");
+                SDFWriter.WriteRaw(this.Parent.Name);
+                SDFWriter.WriteEndElement();
             }
             if (this.Child != null)
             {
-                URDFWriter.WriteStartElement("child");
-                URDFWriter.WriteAttributeString("link", this.Child.Name);
-                URDFWriter.WriteEndElement();
+                SDFWriter.WriteStartElement("child");
+                SDFWriter.WriteRaw(this.Child.Name);
+                SDFWriter.WriteEndElement();
             }
 
             if (this.Axis != null)
             {
-                URDFWriter.WriteStartElement("axis");
-                URDFWriter.WriteAttributeString("xyz", this.Axis[0] + " " + this.Axis[1] + " " + this.Axis[2]);
-                URDFWriter.WriteEndElement();
+                SDFWriter.WriteStartElement("axis");
+                SDFWriter.WriteStartElement("xyz");
+                SDFWriter.WriteRaw(this.Axis[0] + " " + this.Axis[1] + " " + this.Axis[2]);
+                SDFWriter.WriteEndElement();
+                SDFWriter.WriteEndElement();
             }
 
             if (this.Calibration != null)
             {
-                URDFWriter.WriteStartElement("calibration");
-                URDFWriter.WriteAttributeString(this.Calibration.Type, this.Calibration.Value.ToString());
-                URDFWriter.WriteEndElement();
+                SDFWriter.WriteStartElement("calibration");
+                SDFWriter.WriteAttributeString(this.Calibration.Type, this.Calibration.Value.ToString());
+                SDFWriter.WriteEndElement();
             }
 
             if (this.Dynamics != null)
             {
-                this.Dynamics.PrintDynamicsTag(URDFWriter);
+                this.Dynamics.PrintDynamicsTag(SDFWriter);
             }
 
             if (this.Limit != null)
             {
-                this.Limit.PrintLimitTag(URDFWriter);
+                this.Limit.PrintLimitTag(SDFWriter);
             }
 
             if (this.SafetyController != null)
             {
-                this.SafetyController.PrintSafetyTag(URDFWriter);
+                this.SafetyController.PrintSafetyTag(SDFWriter);
             }
 
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -679,15 +722,15 @@ namespace URDF
             this.Upper = upper;
         }
 
-        public void PrintLimitTag(XmlTextWriter URDFWriter)
+        public void PrintLimitTag(XmlTextWriter SDFWriter)
         {
             // <limit effort="#" velocity="#" lower="#" upper="#"/>
-            URDFWriter.WriteStartElement("limit");
-            URDFWriter.WriteAttributeString("effort", this.Effort.ToString());
-            URDFWriter.WriteAttributeString("velocity", this.Velocity.ToString());
-            URDFWriter.WriteAttributeString("lower", this.Lower.ToString());
-            URDFWriter.WriteAttributeString("upper", this.Upper.ToString());
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("limit");
+            SDFWriter.WriteAttributeString("effort", this.Effort.ToString());
+            SDFWriter.WriteAttributeString("velocity", this.Velocity.ToString());
+            SDFWriter.WriteAttributeString("lower", this.Lower.ToString());
+            SDFWriter.WriteAttributeString("upper", this.Upper.ToString());
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -706,12 +749,12 @@ namespace URDF
             this.Friction = friction;
         }
 
-        public void PrintDynamicsTag(XmlTextWriter URDFWriter)
+        public void PrintDynamicsTag(XmlTextWriter SDFWriter)
         {
-            URDFWriter.WriteStartElement("dynamics");
-            URDFWriter.WriteAttributeString("damping", this.Damping.ToString());
-            URDFWriter.WriteAttributeString("friction", this.Friction.ToString());
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("dynamics");
+            SDFWriter.WriteAttributeString("damping", this.Damping.ToString());
+            SDFWriter.WriteAttributeString("friction", this.Friction.ToString());
+            SDFWriter.WriteEndElement();
         }
     }
 
@@ -734,14 +777,14 @@ namespace URDF
             this.KVelocity = kVelocity;
         }
 
-        public void PrintSafetyTag(XmlTextWriter URDFWriter)
+        public void PrintSafetyTag(XmlTextWriter SDFWriter)
         {
-            URDFWriter.WriteStartElement("safety_controller");
-            URDFWriter.WriteAttributeString("soft_lower_limit", this.SoftLowerLimit.ToString());
-            URDFWriter.WriteAttributeString("soft_upper_limit", this.SoftUpperLimit.ToString());
-            URDFWriter.WriteAttributeString("k_position", this.KPosition.ToString());
-            URDFWriter.WriteAttributeString("k_velocity", this.KVelocity.ToString());
-            URDFWriter.WriteEndElement();
+            SDFWriter.WriteStartElement("safety_controller");
+            SDFWriter.WriteAttributeString("soft_lower_limit", this.SoftLowerLimit.ToString());
+            SDFWriter.WriteAttributeString("soft_upper_limit", this.SoftUpperLimit.ToString());
+            SDFWriter.WriteAttributeString("k_position", this.KPosition.ToString());
+            SDFWriter.WriteAttributeString("k_velocity", this.KVelocity.ToString());
+            SDFWriter.WriteEndElement();
         }
     }
 

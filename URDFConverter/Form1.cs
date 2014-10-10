@@ -9,16 +9,18 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-using URDF;
+using SDF;
 using Inventor;
+using System.Diagnostics;
 
-namespace URDFConverter
+namespace SDFConverter
 {
     public partial class Form1 : Form
     {
         Inventor.Application _invApp;
         Robot robo;
         bool _started = false;
+        int precision = 8;
 
         public Form1()
         {
@@ -66,10 +68,10 @@ namespace URDFConverter
             
             // Set the Visual attributes, geometric and material, of the link.
             link1.Visual = new Visual(new Mesh("package://link1.stl"), 
-                new URDF.Material("Red", new double[] { 255, 0, 0, 1.0 }));
+                new SDF.Material("Red", new double[] { 255, 0, 0, 1.0 }));
 
             // Set the Collision attributes of the link.
-            link1.Collision = new Collision(new URDF.Cylinder(1, 2));
+            link1.Collision = new Collision(new SDF.Cylinder(1, 2));
 
             // Set the Inertial attributes of the link.
             link1.Inertial = new Inertial(5, new double[] { 1, 0, 0, 1, 0, 1 });
@@ -88,7 +90,7 @@ namespace URDFConverter
 
             robot.Joints.Add((Joint)joint1.Clone());
 
-            robot.WriteURDFToFile("C:\\Users\\W.Stott\\Documents\\URDF\\robo.xml");
+            robot.WriteSDFToFile("C:\\Users\\W.Stott\\Documents\\SDF\\robo.xml");
             */
 
             #endregion
@@ -100,7 +102,17 @@ namespace URDFConverter
         public void Reload()
         {
             //Start robot
-            robo = new Robot(_invApp.ActiveDocument.DisplayName);
+            try
+            {
+                robo = new Robot(_invApp.ActiveDocument.DisplayName);
+            }
+            catch (NullReferenceException ex)
+            {
+                this.label1.Text = "No inventor file found. Please open an assembly.";
+                return;
+            }
+
+            this.label_output.Text = "SDF Model Name: " + robo.Name + "\n";
 
             //Did we recieve an assembly document?
             if (_invApp.ActiveDocumentType == DocumentTypeEnum.kAssemblyDocumentObject) {
@@ -115,66 +127,249 @@ namespace URDFConverter
 
         public void RefreshView()
         {
-            
+            this.label_output.Text = robo.WriteSDFToString();
         }
 
-        public void WriteURDF()
+        public void GenerateSDF()
         {
             UnitsOfMeasure oUOM = _invApp.ActiveDocument.UnitsOfMeasure;
             AssemblyDocument oAsmDoc = (AssemblyDocument)_invApp.ActiveDocument;
             AssemblyComponentDefinition oAsmCompDef = oAsmDoc.ComponentDefinition;
             ComponentOccurrence Parent;
-            string ParentName, AbsolutePosition, name, mirname, mirParentName;
+            string ParentName, AbsolutePosition, mirname, mirParentName;
             double[] ParentCOM, Offset;
 
+            //Get all the available links
             foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
             {
-                // Generate links from available subassemblies in main assembly.
+                //Define a link
+                Link link = new Link(oCompOccur.Name);
 
-                //New Link
-                robo.Links.Add(new Link(oCompOccur.Name));
-                int c = robo.Links.Count - 1;
+                //Get global position and COM
+                Inventor.Vector pos = oCompOccur.Transformation.Translation;
+                double Mass = oCompOccur.MassProperties.Mass;
+                pos = UpdateUnits(pos);
 
-                //Find and set parent link
-                for (int i = 0; i < robo.Links.Count; i++)
+                //Calculate rotation.
+                Inventor.Matrix R1 = oCompOccur.Transformation;
+                double[] Er = new double[3] {0,0,0};
+                double cy_thresh = 0.00000004;
+                double cy = Math.Sqrt(Math.Pow(R1.get_Cell(3, 3), 2) + Math.Pow(R1.get_Cell(3, 2), 2));
+                if (cy > cy_thresh)
                 {
-                    if (String.Equals(robo.Links[i].Name, ReturnParentName(oCompOccur)))
-                        robo.Links[c].Parent = robo.Links[i];
+                    Er[2] = Math.Atan2(R1.get_Cell(2, 1), R1.get_Cell(1, 1));//Z
+                    Er[1] = Math.Atan2(- R1.get_Cell(3, 1), cy);//Y
+                    Er[0] = Math.Atan2(R1.get_Cell(3, 2), R1.get_Cell(3, 3));//X
+                }
+                else
+                {
+                    Er[2] = Math.Atan2(R1.get_Cell(1, 3), R1.get_Cell(2, 2));//Z
+                    Er[1] = Math.Atan2(-R1.get_Cell(3, 1), cy);//Y
+                    Er[0] = 0;//X
                 }
 
-                //If link has a parent
-                if (robo.Links[c].Parent != null)
-                {
-                    //Define a joint
-                    robo.Joints.Add(new Joint(FormatJointName(robo.Links[c].Name), JointType.Revolute, robo.Links[c].Parent, robo.Links[c]));
-                    int j = robo.Joints.Count - 1;
-
-                    //Parse joint axis
-                    switch (robo.Joints[j].Name[robo.Joints[j].Name.Length - 1])
-                    {
-                        case 'R':
-                            robo.Joints[j].Axis = new double[] { 1, 0, 0 };
-                            break;
-                        case 'P':
-                            robo.Joints[j].Axis = new double[] { 0, 1, 0 };
-                            break;
-                        case 'Y':
-                            robo.Joints[j].Axis = new double[] { 0, 0, 1 };
-                            break;
-                        default:
-                            break;
-                    }
-                }
-
-                // Get mass properties for each link.
+                // Get Moments of Inertia.
                 double[] iXYZ = new double[6];
                 oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
-                robo.Links[c].Inertial = new Inertial(oCompOccur.MassProperties.Mass, iXYZ);
-                robo.Links[c].Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
 
-                // Set shape properties for each link.
-                robo.Links[c].Visual = new Visual(new Mesh("package://" + robo.Name + "/" + robo.Links[c].Name + ".stl"));
+                //Round to a sane number of decimal places.
+                pos.X = Math.Round(pos.X, precision);
+                pos.Y = Math.Round(pos.X, precision);
+                pos.Z = Math.Round(pos.X, precision);
+                Mass = Math.Round(Mass, precision);
+                int i = 0;
+                for (i = 0; i < 3; i++)
+                {
+                    Er[i] = Math.Round(Er[i], precision);
+                }
+                for (i = 0; i < 6; i++)
+                {
+                    iXYZ[i] = Math.Round(iXYZ[i], precision);
+                }
+
+                // Set position and rotation
+                link.Pose = new Pose(pos.X, pos.Y, pos.Z, Er[0], Er[1], Er[2]);
+
+                // Set Moments of Inertia
+                link.Inertial = new Inertial(Mass, iXYZ);
+                //link.Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
+
+                // Set the URI for the link's model.
+                String URI = "model://" + robo.Name + "/meshes/" + link.Name + ".stl";
+                double scale = Convert.ToDouble(this.textBox1.Text);
+                link.Visual = new Visual(new Mesh(URI, scale));
+                link.Collision = new Collision(new Mesh(URI, scale));
+
+                // Print out link information.
+                WriteLine("New Link:          --------------------------------------");
+                WriteLine("                  Name: " + link.Name);
+                WriteLine("           Translation: " + pos.X + ", " + pos.Y + ", " + pos.Z);
+                WriteLine("              Rotation: " + Er[0] + ", " + Er[1] + ", " + Er[2]);
+                WriteLine("                  Mass: " + Mass);
+
+                // Add link to robot
+                robo.Links.Add(link);
+
             }
+
+            //Get all the available joints
+            foreach (AssemblyConstraint constraint in oAsmCompDef.Constraints) {
+
+                String name = constraint.Name;
+                Inventor.Point center;
+                JointType type = JointType.Revolute;
+                ComponentOccurrence childP = constraint.OccurrenceOne;
+                ComponentOccurrence parentP = constraint.OccurrenceTwo;
+                Link child = GetLinkByName(childP.Name);
+                Link parent = GetLinkByName(parentP.Name);
+                double[] axis = new double[] { 0, 0, 0};
+
+                WriteLine("New joint:          --------------------------------------");
+                WriteLine("                Name: " + name);
+                WriteLine("              Parent: " + parent.Name);
+                WriteLine("               Child: " + child.Name);
+
+
+
+                //Get degrees of freedom information.
+                int transDOFCount, rotDOFCount;
+                Inventor.ObjectsEnumerator transDOF, rotDOF;
+                Inventor.Point DOFCenter;
+                childP.GetDegreesOfFreedom(out transDOFCount, out transDOF, out rotDOFCount, out rotDOF, out DOFCenter);
+
+
+                WriteLine("               Child: " + child.Name);
+                WriteLine("            Location: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
+
+                //If we have a translational DOF
+                if (transDOF.Count > 0)
+                {
+                    //Assume ONLY prismatic
+                    type = JointType.Prismatic;
+
+                    //Define translational axis.
+                    Vector i = transDOF[1];
+                    axis[0] = i.X;
+                    axis[1] = i.Y;
+                    axis[2] = i.Z;
+
+                    WriteLine("                Type: Prismatic");
+                    WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
+                }
+                else if (rotDOF.Count > 0)
+                {
+                    //Assume ONLY revolute.
+                    type = JointType.Revolute;
+                    
+                    //Define rotational axis.
+                    Vector i = rotDOF[1];
+                    axis[0] = i.X;
+                    axis[1] = i.Y;
+                    axis[2] = i.Z;
+
+                    WriteLine("                Type: Revolute");
+                    WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
+                }
+                else
+                {
+                    //Skip this constraint, no degrees of freedom.
+                    continue;
+                }
+
+                //Add the joint to the robot
+                Joint joint = new Joint(name, type);
+                joint.Axis = axis;
+                joint.Parent = parent;
+                joint.Child = child;
+                robo.Joints.Add(joint);
+
+            }
+
+            if (this.checkBox2.Checked)
+            {
+                // Save the SDF
+                SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+
+                saveFileDialog1.Filter = "SDF File (Gazebo) (*.xml)|*.xml";
+                saveFileDialog1.RestoreDirectory = true;
+                if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+                {
+                    robo.WriteSDFToFile(saveFileDialog1.FileName);
+                }
+
+                //Save STL
+                foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
+                {
+                    if (oCompOccur.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject && this.checkBox1.Checked)
+                    {
+                        PartDocument partDoc = (PartDocument)oCompOccur.Definition.Document;
+                        String[] splitPath = saveFileDialog1.FileName.Split(new String[1]{"\\"}, StringSplitOptions.None);
+                        splitPath[splitPath.Length - 1] = "";
+                        String path = string.Join("\\", splitPath);
+                        partDoc.SaveAs(path + "meshes\\" + oCompOccur.Name + ".stl", true);
+                        WriteLine("Finished saving: " + path + "meshes\\" + oCompOccur.Name + ".stl");
+                    }
+                }
+            }
+
+            #region oldcode
+            //foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
+            //{
+            //    // Generate links from available subassemblies in main assembly.
+            //    //Debugger.Break();
+
+            //    //New Link
+            //    robo.Links.Add(new Link(oCompOccur.Name));
+            //    int c = robo.Links.Count - 1;
+
+            //    WriteLine("Added Link: "+ robo.Links[c].Name +", link count: " + robo.Links.Count.ToString());
+
+            //    //Find and set parent link
+            //    for (int i = 0; i < robo.Links.Count; i++)
+            //    {
+            //        if (String.Equals(robo.Links[i].Name, ReturnParentName(oCompOccur)))
+            //        {
+            //            robo.Links[c].Parent = robo.Links[i];
+            //            WriteLine("Link's parent: " + robo.Links[i].Name);
+            //        }
+            //    }
+
+                
+
+            //    //If link has a parent
+            //    if (robo.Links[c].Parent != null)
+            //    {
+            //        //Define a joint
+            //        robo.Joints.Add(new Joint(FormatJointName(robo.Links[c].Name), JointType.Revolute, robo.Links[c].Parent, robo.Links[c]));
+            //        int j = robo.Joints.Count - 1;
+
+            //        //Parse joint axis
+            //        switch (robo.Joints[j].Name[robo.Joints[j].Name.Length - 1])
+            //        {
+            //            case 'R':
+            //                robo.Joints[j].Axis = new double[] { 1, 0, 0 };
+            //                break;
+            //            case 'P':
+            //                robo.Joints[j].Axis = new double[] { 0, 1, 0 };
+            //                break;
+            //            case 'Y':
+            //                robo.Joints[j].Axis = new double[] { 0, 0, 1 };
+            //                break;
+            //            default:
+            //                break;
+            //        }
+            //    }
+
+            //    // Get mass properties for each link.
+            //    double[] iXYZ = new double[6];
+            //    oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
+            //    robo.Links[c].Inertial = new Inertial(oCompOccur.MassProperties.Mass, iXYZ);
+            //    robo.Links[c].Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
+
+            //    // Set shape properties for each link.
+            //    robo.Links[c].Visual = new Visual(new Mesh("package://" + robo.Name + "/" + robo.Links[c].Name + ".stl"));
+            //}
+            #endregion
 
         }
 
@@ -244,6 +439,17 @@ namespace URDFConverter
             return c;
         }
 
+        public Inventor.Vector UpdateUnits(Inventor.Vector inp)
+        {
+            UnitsOfMeasure oUOM = _invApp.ActiveDocument.UnitsOfMeasure;
+
+            inp.X = oUOM.ConvertUnits(inp.X, "cm", "m");
+            inp.Y = oUOM.ConvertUnits(inp.Y, "cm", "m");
+            inp.Z = oUOM.ConvertUnits(inp.Z, "cm", "m");
+
+            return inp;
+        }
+
         public string ReturnParentName(ComponentOccurrence occur)
         {
             try
@@ -255,6 +461,20 @@ namespace URDFConverter
                 MessageBox.Show(ex.Message);
                 return null;
             }
+        }
+
+        public Link GetLinkByName(String name)
+        {
+            Link link = null;
+
+            foreach (Link l in robo.Links) {
+                if (l.Name == name)
+                {
+                    link = l;
+                }
+            }
+
+            return link;
         }
 
         public string FormatName(string strData)
@@ -300,28 +520,24 @@ namespace URDFConverter
 
         private void buttonGen_Click(object sender, EventArgs e)
         {
-            //generate a new URDF
-            WriteURDF();
-        }
-
-        private void buttonSave_Click(object sender, EventArgs e)
-        {
-            // Save the URDF
-            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-
-            saveFileDialog1.Filter = "URDF File (ROS) (*.xml)|*.xml";
-            saveFileDialog1.RestoreDirectory = true;
-            if (saveFileDialog1.ShowDialog() == DialogResult.OK)
-            {
-                robo.WriteURDFToFile(saveFileDialog1.FileName);
-            }
+            //Clear current SDF
+            Reload();
+            //generate a new SDF
+            GenerateSDF();
+            //Set display
+            Refresh();
         }
 
         private void buttonReload_Click(object sender, EventArgs e)
         {
-            // Reload info, and reset URDF
+            // Reload info, and reset SDF
             Reload();
         }
 
+        private void WriteLine(String str)
+        {
+            this.label_output.Text += "\n";
+            this.label_output.Text += str;
+        }
     }
 }
