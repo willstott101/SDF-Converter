@@ -572,7 +572,7 @@ namespace SDF
             SDFWriter.WriteElementString("uri", Filename);
             if (this.Scale != null && this.Scale != 1)
             {
-                SDFWriter.WriteElementString("scale", this.Scale.ToString());
+                SDFWriter.WriteElementString("scale", this.Scale.ToString() + " " + this.Scale.ToString() + " " + this.Scale.ToString());
             }
             SDFWriter.WriteEndElement();
             SDFWriter.WriteEndElement();
