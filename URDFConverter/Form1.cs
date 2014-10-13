@@ -30,6 +30,7 @@ namespace SDFConverter
             try
             {
                 _invApp = (Inventor.Application)Marshal.GetActiveObject("Inventor.Application");
+                MessageBox.Show("Worked fine");
             }
             catch (Exception ex)
             {
@@ -153,9 +154,9 @@ namespace SDFConverter
                 loopList.RemoveAt(0);
                 foreach (ComponentOccurrence occ in loopAsmCompDef.Occurrences)
                 {
-                    if (occ.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject)
+                    if (occ.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject || occ.Definition is WeldmentComponentDefinition)
                     {
-                        //Store parts for link creation
+                        //Store parts and weldments for link creation
                         compOccurs.Add(occ);
 
                         WriteLine("Processing part '" + occ.Name + "' with " + occ.Constraints.Count + " constraints.");
