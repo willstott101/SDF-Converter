@@ -36,6 +36,7 @@
             this.label_output = new System.Windows.Forms.Label();
             this.checkBox1 = new System.Windows.Forms.CheckBox();
             this.panel2 = new System.Windows.Forms.Panel();
+            this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.label3 = new System.Windows.Forms.Label();
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.checkBox2 = new System.Windows.Forms.CheckBox();
@@ -115,6 +116,7 @@
             // panel2
             // 
             this.panel2.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.panel2.Controls.Add(this.progressBar1);
             this.panel2.Controls.Add(this.label3);
             this.panel2.Controls.Add(this.textBox1);
             this.panel2.Controls.Add(this.checkBox2);
@@ -124,6 +126,14 @@
             this.panel2.Name = "panel2";
             this.panel2.Size = new System.Drawing.Size(157, 113);
             this.panel2.TabIndex = 8;
+            // 
+            // progressBar1
+            // 
+            this.progressBar1.Location = new System.Drawing.Point(4, 85);
+            this.progressBar1.Name = "progressBar1";
+            this.progressBar1.Size = new System.Drawing.Size(150, 23);
+            this.progressBar1.TabIndex = 11;
+            this.progressBar1.Visible = false;
             // 
             // label3
             // 
@@ -141,7 +151,7 @@
             this.textBox1.Name = "textBox1";
             this.textBox1.Size = new System.Drawing.Size(55, 20);
             this.textBox1.TabIndex = 9;
-            this.textBox1.Text = "0.01";
+            this.textBox1.Text = "0.001";
             // 
             // checkBox2
             // 
@@ -188,6 +198,7 @@
         private System.Windows.Forms.CheckBox checkBox2;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.TextBox textBox1;
+        private System.Windows.Forms.ProgressBar progressBar1;
     }
 }
 
