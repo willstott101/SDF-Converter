@@ -130,20 +130,60 @@ namespace SDFConverter
             this.label_output.Text = robo.WriteSDFToString();
         }
 
-        public void GenerateSDF()
+        public ComponentOccurrence[] GetCompOccurFromAss(AssemblyComponentDefinition asmCompDef) {
+            return new ComponentOccurrence[asmCompDef.Occurrences.Count];
+        }
+
+        //Generate SDF file.
+        private void GenerateSDF()
         {
+
             UnitsOfMeasure oUOM = _invApp.ActiveDocument.UnitsOfMeasure;
             AssemblyDocument oAsmDoc = (AssemblyDocument)_invApp.ActiveDocument;
             AssemblyComponentDefinition oAsmCompDef = oAsmDoc.ComponentDefinition;
-            ComponentOccurrence Parent;
-            string ParentName, AbsolutePosition, mirname, mirParentName;
-            double[] ParentCOM, Offset;
+            List<ComponentOccurrence> compOccurs = new List<ComponentOccurrence>();
+            List<AssemblyConstraint> constraints = new List<AssemblyConstraint>();
+
+            //Recursively make a list of all component parts.
+            List<AssemblyComponentDefinition> loopList = new List<AssemblyComponentDefinition>();
+            loopList.Add((AssemblyComponentDefinition)oAsmCompDef);
+            while (loopList.Count > 0)
+            {
+                AssemblyComponentDefinition loopAsmCompDef = loopList[0];
+                loopList.RemoveAt(0);
+                foreach (ComponentOccurrence occ in loopAsmCompDef.Occurrences)
+                {
+                    if (occ.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject)
+                    {
+                        //Store parts for link creation
+                        compOccurs.Add(occ);
+
+                        WriteLine("Processing part '" + occ.Name + "' with " + occ.Constraints.Count + " constraints.");
+                    }
+                    else if (occ.DefinitionDocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+                    {
+                        //Get parts from assemblies.
+                        loopList.Add((AssemblyComponentDefinition)occ.Definition);
+
+                        WriteLine("Processing assembly '" + occ.Name + "' with " + occ.Constraints.Count + " constraints.");
+                    }
+                }
+
+                //Get Assembly Constraints
+                foreach (AssemblyConstraint cons in loopAsmCompDef.Constraints)
+                {
+                    constraints.Add(cons);
+                }
+            }
+
+            WriteLine(compOccurs.Count.ToString() + " parts to convert.");
+            WriteLine(constraints.Count.ToString() + " constraints to convert.");
 
             //Get all the available links
-            foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
+            foreach (ComponentOccurrence oCompOccur in compOccurs)
             {
                 //Define a link
-                Link link = new Link(oCompOccur.Name);
+                Link link = new Link(RemoveColon(oCompOccur.Name));
 
                 //Get global position and COM
                 Inventor.Vector pos = oCompOccur.Transformation.Translation;
@@ -174,8 +214,8 @@ namespace SDFConverter
 
                 //Round to a sane number of decimal places.
                 pos.X = Math.Round(pos.X, precision);
-                pos.Y = Math.Round(pos.X, precision);
-                pos.Z = Math.Round(pos.X, precision);
+                pos.Y = Math.Round(pos.Y, precision);
+                pos.Z = Math.Round(pos.Z, precision);
                 Mass = Math.Round(Mass, precision);
                 int i = 0;
                 for (i = 0; i < 3; i++)
@@ -212,16 +252,35 @@ namespace SDFConverter
 
             }
 
+            WriteLine(constraints.Count.ToString() + " constraints to convert.");
+
             //Get all the available joints
-            foreach (AssemblyConstraint constraint in oAsmCompDef.Constraints) {
+            foreach (AssemblyConstraint constraint in constraints) {
+                //Some checks
+                if (constraint.Suppressed) {
+                    //Skip suppressed constraints.
+                    WriteLine("Skipped a suppressed constraint.");
+                    continue;
+                }
 
                 String name = constraint.Name;
                 Inventor.Point center;
                 JointType type = JointType.Revolute;
                 ComponentOccurrence childP = constraint.OccurrenceOne;
                 ComponentOccurrence parentP = constraint.OccurrenceTwo;
-                Link child = GetLinkByName(childP.Name);
-                Link parent = GetLinkByName(parentP.Name);
+                if (childP == null || parentP == null) {
+                    //Skip incomplete constraints
+                    WriteLine("Skipped a constraint without an Occurance.");
+                    continue;
+                }
+                Link child = GetLinkByName(RemoveColon(childP.Name));
+                Link parent = GetLinkByName(RemoveColon(parentP.Name));
+                if (child == null || parent == null)
+                {
+                    //Skip incomplete constraints
+                    WriteLine("Skipped a constraint without a Link.");
+                    continue;
+                }
                 double[] axis = new double[] { 0, 0, 0};
 
                 WriteLine("New joint:          --------------------------------------");
@@ -237,8 +296,6 @@ namespace SDFConverter
                 Inventor.Point DOFCenter;
                 childP.GetDegreesOfFreedom(out transDOFCount, out transDOF, out rotDOFCount, out rotDOF, out DOFCenter);
 
-
-                WriteLine("               Child: " + child.Name);
                 WriteLine("            Location: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
 
                 //If we have a translational DOF
@@ -276,6 +333,11 @@ namespace SDFConverter
                     continue;
                 }
 
+                //Round to reasonable accuracy
+                axis[0] = Math.Round(axis[0], precision);
+                axis[1] = Math.Round(axis[1], precision);
+                axis[2] = Math.Round(axis[2], precision);
+
                 //Add the joint to the robot
                 Joint joint = new Joint(name, type);
                 joint.Axis = axis;
@@ -298,7 +360,7 @@ namespace SDFConverter
                 }
 
                 //Save STL
-                foreach (ComponentOccurrence oCompOccur in oAsmCompDef.Occurrences)
+                foreach (ComponentOccurrence oCompOccur in compOccurs)
                 {
                     if (oCompOccur.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject && this.checkBox1.Checked)
                     {
@@ -306,8 +368,8 @@ namespace SDFConverter
                         String[] splitPath = saveFileDialog1.FileName.Split(new String[1]{"\\"}, StringSplitOptions.None);
                         splitPath[splitPath.Length - 1] = "";
                         String path = string.Join("\\", splitPath);
-                        partDoc.SaveAs(path + "meshes\\" + oCompOccur.Name + ".stl", true);
-                        WriteLine("Finished saving: " + path + "meshes\\" + oCompOccur.Name + ".stl");
+                        partDoc.SaveAs(path + "meshes\\" + RemoveColon(oCompOccur.Name) + ".stl", true);
+                        WriteLine("Finished saving: " + path + "meshes\\" + RemoveColon(oCompOccur.Name) + ".stl");
                     }
                 }
             }
@@ -373,6 +435,11 @@ namespace SDFConverter
 
         }
 
+        public string RemoveColon(String str)
+        {
+            return str.Replace(":", "-");
+        }
+
         public double[] ComputeRelativeOffset(ComponentOccurrence Child, ComponentOccurrence Parent)
         {
             double[] c1 = FindOrigin(Parent);
@@ -404,9 +471,6 @@ namespace SDFConverter
             {
                 c[k] = oUOM.ConvertUnits(c[k], "cm", "m");
             }
-
-            string AbsolutePosition, name;
-            name = FormatName(oCompOccur.Name);
 
             return c;
         }
@@ -450,19 +514,6 @@ namespace SDFConverter
             return inp;
         }
 
-        public string ReturnParentName(ComponentOccurrence occur)
-        {
-            try
-            {
-                return occur.Definition.Document.PropertySets.Item("Inventor User Defined Properties").Item("Parent").Value;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                return null;
-            }
-        }
-
         public Link GetLinkByName(String name)
         {
             Link link = null;
@@ -475,35 +526,6 @@ namespace SDFConverter
             }
 
             return link;
-        }
-
-        public string FormatName(string strData)
-        {
-            // Match Bodies to actually export based on naming convention
-            string res = strData;
-
-            try
-            {
-                res = res.Split(':')[0];
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
-
-            return res;
-        }
-
-        public string FormatJointName(string strData)
-        {
-            // Match Bodies to actually export based on naming convention
-            int Count;
-
-            Match REMatches = Regex.Match(strData, "[RPY]:[0-9]", RegexOptions.IgnoreCase);
-
-            Count = REMatches.Length;
-
-            return REMatches.Value;
         }
 
         public ComponentOccurrence FindComponentOccurrence(ComponentOccurrences Comp, string name)
@@ -522,8 +544,10 @@ namespace SDFConverter
         {
             //Clear current SDF
             Reload();
-            //generate a new SDF
+            //Generate
+            this.buttonGen.Visible = false;
             GenerateSDF();
+            this.buttonGen.Visible = true;
             //Set display
             Refresh();
         }
@@ -538,6 +562,8 @@ namespace SDFConverter
         {
             this.label_output.Text += "\n";
             this.label_output.Text += str;
+            this.panel1.VerticalScroll.Value = this.panel1.VerticalScroll.Maximum;
         }
+
     }
 }
