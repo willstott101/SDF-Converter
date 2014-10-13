@@ -7,6 +7,9 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Xml;
 using System.Xml.Schema;
 
+
+using MathNet.Numerics.LinearAlgebra;
+
 namespace SDF
 {
     #region Robot
@@ -88,6 +91,7 @@ namespace SDF
             WriteSDFToWriter((XmlWriter)SDFWriter);
 
             SDFWriter.Formatting = Formatting.Indented;
+            SDFWriter.Indentation = 4;
 
             //Write the XML to file and close the writer
             //SDFWriter.Flush();
@@ -218,6 +222,25 @@ namespace SDF
             Rotation = new double[3] { 0, 0, 0 };
         }
 
+        public void SetRelative(Pose pose)
+        {
+            int i;
+            for (i=0; i < 3; i++) {
+                Position[i] -= pose.Position[i];
+                //TODO: Check if this is valid.
+                Rotation[i] -= pose.Rotation[i];
+            }
+            
+        }
+
+        public void Scale (double scale)
+        {
+            int i;
+            for (i=0; i < 3; i++) {
+                Position[i] *= scale;
+            }
+        }
+
         public void PrintPoseTag(XmlTextWriter SDFWriter)
         {
             SDFWriter.WriteStartElement("pose");
@@ -232,7 +255,7 @@ namespace SDF
     /// Link inertial properties.
     /// </summary>
     [Serializable]
-    public class Inertial : Origin
+    public class Inertial
     {
         public double Mass { get; set; }
         public double[,] InertiaMatrix { get; private set; }
@@ -296,7 +319,7 @@ namespace SDF
     /// Link visual properties.
     /// </summary>
     [Serializable]
-    public class Visual : Origin
+    public class Visual
     {
         public Shape Shape { get; private set; }
         public Material Material { get; private set; }
@@ -315,7 +338,7 @@ namespace SDF
         public void PrintVisualTag(XmlTextWriter SDFWriter, String linkName)
         {
             /* <visual>
-             *     <origin ... />
+             *     <pose># # # # # #</pose>
              *     <geometry>
              *         ...
              *     </geometry>
@@ -373,7 +396,7 @@ namespace SDF
     /// Link collision properties.
     /// </summary>
     [Serializable]
-    public class Collision : Origin
+    public class Collision
     {
         public Shape Shape { get; set; }
 
@@ -385,7 +408,7 @@ namespace SDF
         public void PrintCollisionTag(XmlTextWriter SDFWriter, String linkName)
         {
             /* <collision>
-             *     <origin ... />
+             *     <pose># # # # # #</pose>
              *     <geometry>
              *         ...
              *     </geometry>
@@ -395,34 +418,6 @@ namespace SDF
             SDFWriter.WriteAttributeString("name", linkName + "_col");
             this.Shape.PrintGeometryTag(SDFWriter);
             SDFWriter.WriteEndElement();
-        }
-    }
-
-    /// <summary>
-    /// Link and Joint origin properties.
-    /// </summary>
-    [Serializable]
-    public class Origin
-    {
-        public double[] XYZ { get; set; }
-        public double[] RPY { get; set; }
-
-        public void PrintOriginTag(XmlTextWriter SDFWriter)
-        {
-            // <origin xyz="# # #" rpy="# # #"/>
-            if (XYZ != null && RPY != null)
-            {
-                SDFWriter.WriteStartElement("origin");
-                if (XYZ != null)
-                {
-                    SDFWriter.WriteAttributeString("xyz", XYZ[0].ToString() + " " + XYZ[1].ToString() + " " + XYZ[2].ToString());
-                }
-                if (RPY != null)
-                {
-                    SDFWriter.WriteAttributeString("rpy", RPY[0].ToString() + " " + RPY[1].ToString() + " " + RPY[2].ToString());
-                }
-                SDFWriter.WriteEndElement();
-            }
         }
     }
 
@@ -586,15 +581,16 @@ namespace SDF
     /// Defines the SDF Joint model.
     /// </summary>
     [Serializable]
-    public class Joint : Origin
+    public class Joint
     {
         public string Name { get; set; }
         public JointType JointType { get; set; }
         public Link Parent { get; set; }
         public Link Child { get; set; }
         public Limit Limit { get; set; }
+        public Pose Pose { get; set; }
 
-        public double[] Axis { get; set; }
+        public Axis Axis { get; set; }
         public Calibration Calibration { get; set; }
         public Dynamics Dynamics { get; set; }
         public SafetyController SafetyController { get; set; }
@@ -641,15 +637,15 @@ namespace SDF
         public void PrintJointTag(XmlTextWriter SDFWriter)
         {
             /* <joint name="..." type="...">
-             *     <origin ... />
-             *     <parent link="..."/>
-             *     <child link="..."/>
+             *     <pose># # # # # #<pose/>
+             *     <parent></parent>
+             *     <child></child>
              *     
              *     <axis xyz="# # #"/>
-             *     <calibration 'type'(rising/falling)="#"/>
-             *     <dynamics damping="#" friction="#"/>
-             *     <limit ... />
-             *     <safety_controller
+             *     //<calibration 'type'(rising/falling)="#"/>
+             *     //<dynamics damping="#" friction="#"/>
+             *     //<limit ... />
+             *     //<safety_controller
              * </joint>
              */
             SDFWriter.WriteStartElement("joint");
@@ -668,13 +664,13 @@ namespace SDF
                 SDFWriter.WriteEndElement();
             }
 
+            if (Pose != null) {
+                Pose.PrintPoseTag(SDFWriter);
+            }
+
             if (this.Axis != null)
             {
-                SDFWriter.WriteStartElement("axis");
-                SDFWriter.WriteStartElement("xyz");
-                SDFWriter.WriteRaw(this.Axis[0] + " " + this.Axis[1] + " " + this.Axis[2]);
-                SDFWriter.WriteEndElement();
-                SDFWriter.WriteEndElement();
+                this.Axis.PrintAxisTag(SDFWriter);
             }
 
             if (this.Calibration != null)
@@ -699,6 +695,55 @@ namespace SDF
                 this.SafetyController.PrintSafetyTag(SDFWriter);
             }
 
+            SDFWriter.WriteEndElement();
+        }
+    }
+
+    /// <summary>
+    /// AXIS
+    /// </summary>
+    [Serializable]
+    public class Axis
+    {
+        public double[] values { get; set; }
+
+        public Axis(double x, double y, double z)
+        {
+            if (x < 0) { x *= -1; }
+            if (y < 0) { y *= -1; }
+            if (z < 0) { z *= -1; }
+
+            values = new double[3] { 0, 0, 0 };
+
+            values[0] = x;
+            values[1] = y;
+            values[2] = z;
+        }
+
+        public Axis(double x, double y, double z, Pose parent)
+        {
+            if (x < 0) { x *= -1; }
+            if (y < 0) { y *= -1; }
+            if (z < 0) { z *= -1; }
+
+            values = new double[3] { 0, 0, 0 };
+            values[0] = x;
+            values[1] = y;
+            values[2] = z;
+
+            //TODO: Set a relative axis.
+
+            //Vector<double> vect = 
+
+            // Ex parent.Rotation[0]
+            // Ey parent.Rotation[1]
+            // Ez parent.Rotation[2]
+        }
+
+        public void PrintAxisTag(XmlTextWriter SDFWriter)
+        {
+            SDFWriter.WriteStartElement("axis");
+            SDFWriter.WriteElementString("xyz", this.values[0] + " " + this.values[1] + " " + this.values[3]);
             SDFWriter.WriteEndElement();
         }
     }

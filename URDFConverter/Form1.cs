@@ -30,7 +30,6 @@ namespace SDFConverter
             try
             {
                 _invApp = (Inventor.Application)Marshal.GetActiveObject("Inventor.Application");
-                MessageBox.Show("Worked fine");
             }
             catch (Exception ex)
             {
@@ -282,7 +281,8 @@ namespace SDFConverter
                     WriteLine("Skipped a constraint without a Link.");
                     continue;
                 }
-                double[] axis = new double[] { 0, 0, 0};
+                Pose Pose;
+                Axis Axis;
 
                 WriteLine("New joint:          --------------------------------------");
                 WriteLine("                Name: " + name);
@@ -299,6 +299,11 @@ namespace SDFConverter
 
                 WriteLine("            Location: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
 
+
+                Pose = new Pose(DOFCenter.X, DOFCenter.Y, DOFCenter.Z);
+                Pose.SetRelative(child.Pose);
+                Pose.Scale(0.01);
+
                 //If we have a translational DOF
                 if (transDOF.Count > 0)
                 {
@@ -307,9 +312,7 @@ namespace SDFConverter
 
                     //Define translational axis.
                     Vector i = transDOF[1];
-                    axis[0] = i.X;
-                    axis[1] = i.Y;
-                    axis[2] = i.Z;
+                    Axis = new Axis(i.X, i.Y, i.Z, Pose); 
 
                     WriteLine("                Type: Prismatic");
                     WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
@@ -321,9 +324,7 @@ namespace SDFConverter
                     
                     //Define rotational axis.
                     Vector i = rotDOF[1];
-                    axis[0] = i.X;
-                    axis[1] = i.Y;
-                    axis[2] = i.Z;
+                    Axis = new Axis(i.X, i.Y, i.Z, Pose); 
 
                     WriteLine("                Type: Revolute");
                     WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
@@ -334,16 +335,12 @@ namespace SDFConverter
                     continue;
                 }
 
-                //Round to reasonable accuracy
-                axis[0] = Math.Round(axis[0], precision);
-                axis[1] = Math.Round(axis[1], precision);
-                axis[2] = Math.Round(axis[2], precision);
-
                 //Add the joint to the robot
                 Joint joint = new Joint(name, type);
-                joint.Axis = axis;
+                joint.Axis = Axis;
                 joint.Parent = parent;
                 joint.Child = child;
+                joint.Pose = Pose;
                 robo.Joints.Add(joint);
 
             }
@@ -353,7 +350,7 @@ namespace SDFConverter
                 // Save the SDF
                 SaveFileDialog saveFileDialog1 = new SaveFileDialog();
 
-                saveFileDialog1.Filter = "SDF File (Gazebo) (*.xml)|*.xml";
+                saveFileDialog1.Filter = "SDF File (Gazebo) (*.sdf)|*.sdf";
                 saveFileDialog1.RestoreDirectory = true;
                 if (saveFileDialog1.ShowDialog() == DialogResult.OK)
                 {

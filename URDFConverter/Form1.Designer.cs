@@ -151,7 +151,7 @@
             this.textBox1.Name = "textBox1";
             this.textBox1.Size = new System.Drawing.Size(55, 20);
             this.textBox1.TabIndex = 9;
-            this.textBox1.Text = "0.001";
+            this.textBox1.Text = "0.01";
             // 
             // checkBox2
             // 
