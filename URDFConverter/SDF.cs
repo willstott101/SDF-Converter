@@ -732,6 +732,10 @@ namespace SDF
             values[2] = z;
 
             //TODO: Set a relative axis.
+            //TODO: Original Rot matrix of child. http://svn.gna.org/svn/relax/tags/1.3.4/maths_fns/rotation_matrix.py def R_to_axis_angle(matrix):
+            //TODO: Then go to quaternian
+            //TODO: Then get relative.
+            //TODO: Then get axis angle.
 
             //Vector<double> vect = 
 
