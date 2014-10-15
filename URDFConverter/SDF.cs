@@ -251,6 +251,18 @@ namespace SDF
             this.Scale(positionScale);
         }
 
+        public Pose(Pose linkpose)
+        {
+            // TODO: Complete member initialization
+            Position = (double[])linkpose.Position.Clone();
+            Rotation = (double[])linkpose.Rotation.Clone();
+
+            //axisAngle { get; private set; }
+            this.matrix = (Inventor.Matrix)linkpose.matrix;
+
+            internalprecision = linkpose.internalprecision;
+        }
+
         public void Round(int precision)
         {
             //Set rounded values.
@@ -278,9 +290,9 @@ namespace SDF
 
                 //TODO: Handle Cardanian Rotations
                 Matrix<double> M1 = DenseMatrix.OfArray(new double[,] {
-                    {M.get_Cell(1,1), M.get_Cell(1,2), M.get_Cell(1,3)},
-                    {M.get_Cell(2,1), M.get_Cell(2,2), M.get_Cell(2,3)},
-                    {M.get_Cell(3,1), M.get_Cell(3,2), M.get_Cell(3,3)}
+                    {M.get_Cell(1,1), M.get_Cell(2,1), M.get_Cell(3,1)},
+                    {M.get_Cell(1,2), M.get_Cell(2,2), M.get_Cell(3,2)},
+                    {M.get_Cell(1,3), M.get_Cell(2,3), M.get_Cell(3,3)}
                 });
                //M1.Transpose();
 
@@ -353,7 +365,7 @@ namespace SDF
             {
                 for (y = 1; y < 4; y++)
                 {
-                    str += this.matrix.get_Cell(x, y) + " ";
+                    str += this.matrix.get_Cell(y, x) + " ";
                 }
                 str += Environment.NewLine;
             }
@@ -371,9 +383,9 @@ namespace SDF
 
             //Axis
             double[] axis = new double[3] { 0, 0, 0};
-            axis[0] = R1.get_Cell(3, 2) - R1.get_Cell(2, 3);
-            axis[1] = R1.get_Cell(1, 3) - R1.get_Cell(3, 1);
-            axis[2] = R1.get_Cell(2, 1) - R1.get_Cell(1, 2);
+            axis[0] = R1.get_Cell(2, 3) - R1.get_Cell(3, 2);
+            axis[1] = R1.get_Cell(3, 1) - R1.get_Cell(1, 3);
+            axis[2] = R1.get_Cell(1, 2) - R1.get_Cell(2, 1);
             //Angle
             double r = Math.Sqrt(Math.Pow(axis[1], 2) + Math.Pow(axis[2], 2));
             r = Math.Sqrt(Math.Pow(axis[0], 2) + Math.Pow(r, 2));
@@ -414,6 +426,11 @@ namespace SDF
     [Serializable]
     public class Inertial
     {
+        private double Mass1;
+        private double[] iXYZ;
+        private double[] COM;
+        private double scale;
+
         public double Mass { get; set; }
         public double[,] InertiaMatrix { get; private set; }
         public double[] InertiaVector { get; private set; }
@@ -424,56 +441,21 @@ namespace SDF
         /// </summary>
         /// <param name="mass">Link mass (Kg).</param>
         /// <param name="inertiaMatrix">3x3 element moment of inertia matrix (Kg*m^2) [Ixx Ixy Ixz; Ixy Iyy Iyz; Ixz Iyz Izz]</param>
-        public Inertial(double mass, double[,] inertiaMatrix, double[] COM, Pose linkpose, double scale = 1)
-        {
-            this.Mass = mass;
-            this.InertiaMatrix = inertiaMatrix;
-            this.ProcessMatrix();
-
-            this.Scale(scale);
-
-            if (linkpose.matrix != null) {
-
-                this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
-                this.Pose.Position = COM;
-                this.Pose.Scale(scale);
-            }
-            else
-            {
-                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
-            }
-            this.Pose.SetRelative(linkpose);
-            //TODO: Get rid of this..
-            this.Pose.Rotation = new double[3] { 0, 0, 0 };
-        }
-
-        /// <summary>
-        /// Set link's mass and moment of inertia.
-        /// </summary>
-        /// <param name="mass">Link mass (Kg).</param>
-        /// <param name="inertiaVector">1x6 vector of principal moments and products of inertia (Kg*m^2) [Ixx Ixy Ixz Iyy Iyz Izz]</param>
         public Inertial(double mass, double[] inertiaVector, double[] COM, Pose linkpose, double scale)
         {
             this.Mass = mass;
             this.InertiaVector = inertiaVector;
             this.ProcessVector();
 
-            if (scale != 1)
-            {
-                this.Scale(scale);
-            }
+            this.Scale(scale);
 
-            if (linkpose.matrix != null)
-            {
-                this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
-                this.Pose.Position = COM;
-            }
-            else
-            {
-                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
-            }
+            this.Pose = new Pose(linkpose);
+            this.Pose.Position = COM;
+            this.Pose.Scale(scale);
+
             this.Pose.SetRelative(linkpose);
-            this.Pose.Rotation = new double[3] { 0,0,0};
+            //TODO: Get rid of this..
+            //this.Pose.Rotation = new double[3] { 0, 0, 0 };
         }
 
         public void Scale(double scale)
