@@ -12,7 +12,8 @@ using System.Windows.Forms;
 using SDF;
 using Inventor;
 using System.Diagnostics;
-using MathNet.Numerics;
+using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.LinearAlgebra.Double;
 
 namespace SDFConverter
 {
@@ -154,6 +155,7 @@ namespace SDFConverter
                     {
                         //Store parts and weldments for link creation
                         compOccurs.Add(occ);
+                        //occ.
 
                         WriteLine("Processing part '" + occ.Name + "' with " + occ.Constraints.Count + " constraints.");
                     }
@@ -195,7 +197,9 @@ namespace SDFConverter
                 // Get Moments of Inertia.
                 double[] iXYZ = new double[6];
                 //Pos of C.O.M., Rot of Link.
-                oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
+                // Ixx, Iyy, Izz, Ixy, Iyz, Ixz
+                // Ixx, Ixy, Ixz, Iyy, Iyz, Izz
+                oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]);
                 Inventor.Point COMp = oCompOccur.MassProperties.CenterOfMass;
                 double[] COM = new double[3] {COMp.X, COMp.Y, COMp.Z};
 
@@ -212,7 +216,11 @@ namespace SDFConverter
                 WriteLine("New Link:          --------------------------------------");
                 WriteLine("                  Name: " + link.Name);
                 WriteLine("                  Pose: " + link.Pose.ToString());
+                link.Pose = new Pose(link.Pose);
+                WriteLine("                  Pose: " + link.Pose.ToString());
                 WriteLine("           InertiaPose: " + link.Inertial.Pose.ToString());
+                Matrix<double> M2 = DenseMatrix.OfArray(link.Inertial.InertiaMatrix);
+                WriteLine(M2.ToString());
                 WriteLine("                  Mass: " + Mass);
                 WriteLine("       Rotation Matrix: " + System.Environment.NewLine + link.Pose.PrintMatrix());
 
@@ -281,7 +289,7 @@ namespace SDFConverter
                 Pose Pose;
                 Axis Axis;
                 Inventor.Point Geomcenter;
-                if (constraint is InsertConstraint)
+                if (constraint is InsertConstraint && constraint.GeometryOne is Circle)
                 {
                     //Handle Insert Constraints (Revolute)
                     Circle circ = (Circle)constraint.GeometryOne;
@@ -289,12 +297,12 @@ namespace SDFConverter
                     Axis = new Axis(circ.Normal.X, circ.Normal.Y, circ.Normal.Z);
                     type = JointType.Revolute;
                 }
-                else if (constraint is MateConstraint)
+                else if (constraint is MateConstraint && constraint.GeometryOne is Line)
                 {
                     //Handle Mate Constraints (Prismatic)
                     Inventor.Line line = (Line)constraint.GeometryOne;
                     Geomcenter = line.RootPoint;
-                    Axis = new Axis(line.Direction.X, line.Direction.X, line.Direction.X);
+                    Axis = new Axis(line.Direction.X, line.Direction.Y, line.Direction.Z);
                     type = JointType.Prismatic;
                 }
                 else
@@ -313,6 +321,7 @@ namespace SDFConverter
                 Pose.SetRelative(child.Pose);
                 WriteLine("           Child Loc: " + child.Pose.ToString());
                 WriteLine("       Relative Pose: " + Pose.ToString());
+                WriteLine("                Axis: " + Axis.ToString());
                 WriteLine("              rotDOF: " + rotDOFCount + "    transDOF: " + transDOFCount);
 
                 //Add the joint to the robot

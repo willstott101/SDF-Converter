@@ -206,7 +206,7 @@ namespace SDF
         public double[] Position { get; set; }
         public double[] Rotation { get; set; }
 
-        public double[] axisAngle { get; private set; }
+        //public double[] axisAngle { get; private set; }
         public Inventor.Matrix matrix {get; private set;}
 
         public int internalprecision = 8;
@@ -241,7 +241,7 @@ namespace SDF
 
             this.Scale(positionScale);
 
-            this.SetAxisAngle(R1);
+            //this.SetAxisAngle(R1);
         }
 
         public Pose(double x, double y, double z, int precision, double positionScale = 1)
@@ -253,7 +253,6 @@ namespace SDF
 
         public Pose(Pose linkpose)
         {
-            // TODO: Complete member initialization
             Position = (double[])linkpose.Position.Clone();
             Rotation = (double[])linkpose.Rotation.Clone();
 
@@ -274,6 +273,16 @@ namespace SDF
             }
         }
 
+        public Matrix<double> niceMatrix(Inventor.Matrix M)
+        {
+            Matrix<double> M1 = DenseMatrix.OfArray(new double[,] {
+                    {M.get_Cell(1,1), M.get_Cell(2,1), M.get_Cell(3,1)},
+                    {M.get_Cell(1,2), M.get_Cell(2,2), M.get_Cell(3,2)},
+                    {M.get_Cell(1,3), M.get_Cell(2,3), M.get_Cell(3,3)}
+                });
+            return M1;
+        }
+
         public void SetRelative(Pose pose)
         {
             int i;
@@ -285,21 +294,9 @@ namespace SDF
 
             if (pose.matrix != null)
             {
-                //pose.matrix*Position
                 Inventor.Matrix M = pose.matrix;
-
-                //TODO: Handle Cardanian Rotations
-                Matrix<double> M1 = DenseMatrix.OfArray(new double[,] {
-                    {M.get_Cell(1,1), M.get_Cell(2,1), M.get_Cell(3,1)},
-                    {M.get_Cell(1,2), M.get_Cell(2,2), M.get_Cell(3,2)},
-                    {M.get_Cell(1,3), M.get_Cell(2,3), M.get_Cell(3,3)}
-                });
-               //M1.Transpose();
-
+                Matrix<double> M1 = this.niceMatrix(M);
                 Vector<double> vec =  M1.Multiply(DenseVector.OfArray(this.Position));
-
-                MessageBox.Show(vec.ToVectorString());
-
                 this.Position = vec.ToArray();
 
                 #region old
@@ -373,51 +370,51 @@ namespace SDF
         }
 
         //TODO: Do we need this?
-        public void SetAxisAngle(Inventor.Matrix R1) {
+        //public void SetAxisAngle(Inventor.Matrix R1) {
             
-            /*R1.SetToIdentity();
-            R1.set_Cell(1, 1, Math.Cos(0.78539816339));
-            R1.set_Cell(1, 2, -Math.Sin(0.78539816339));
-            R1.set_Cell(2, 1, Math.Sin(0.78539816339));
-            R1.set_Cell(2, 2, Math.Cos(0.78539816339));*/
+        //    /*R1.SetToIdentity();
+        //    R1.set_Cell(1, 1, Math.Cos(0.78539816339));
+        //    R1.set_Cell(1, 2, -Math.Sin(0.78539816339));
+        //    R1.set_Cell(2, 1, Math.Sin(0.78539816339));
+        //    R1.set_Cell(2, 2, Math.Cos(0.78539816339));*/
 
-            //Axis
-            double[] axis = new double[3] { 0, 0, 0};
-            axis[0] = R1.get_Cell(2, 3) - R1.get_Cell(3, 2);
-            axis[1] = R1.get_Cell(3, 1) - R1.get_Cell(1, 3);
-            axis[2] = R1.get_Cell(1, 2) - R1.get_Cell(2, 1);
-            //Angle
-            double r = Math.Sqrt(Math.Pow(axis[1], 2) + Math.Pow(axis[2], 2));
-            r = Math.Sqrt(Math.Pow(axis[0], 2) + Math.Pow(r, 2));
-            double t = R1.get_Cell(1, 1) + R1.get_Cell(2, 2) + R1.get_Cell(3, 3);
-            double theta = Math.Atan2(r, t - 1);
-            //Normalise
-            int i;
-            for (i = 0; i < 3; i++) {
-                axis[i] = axis[i] / r;
-            }
+        //    //Axis
+        //    double[] axis = new double[3] { 0, 0, 0};
+        //    axis[0] = R1.get_Cell(2, 3) - R1.get_Cell(3, 2);
+        //    axis[1] = R1.get_Cell(3, 1) - R1.get_Cell(1, 3);
+        //    axis[2] = R1.get_Cell(1, 2) - R1.get_Cell(2, 1);
+        //    //Angle
+        //    double r = Math.Sqrt(Math.Pow(axis[1], 2) + Math.Pow(axis[2], 2));
+        //    r = Math.Sqrt(Math.Pow(axis[0], 2) + Math.Pow(r, 2));
+        //    double t = R1.get_Cell(1, 1) + R1.get_Cell(2, 2) + R1.get_Cell(3, 3);
+        //    double theta = Math.Atan2(r, t - 1);
+        //    //Normalise
+        //    int i;
+        //    for (i = 0; i < 3; i++) {
+        //        axis[i] = axis[i] / r;
+        //    }
 
-            //Return
-            this.axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
+        //    //Return
+        //    this.axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
 
 
-            ////MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
+        //    ////MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
 
-            /* Convert the rotation matrix into the axis-angle notation.
+        //    /* Convert the rotation matrix into the axis-angle notation.
 
-                Conversion equations
-                ====================
+        //        Conversion equations
+        //        ====================
 
-                From Wikipedia (http://en.wikipedia.org/wiki/Rotation_matrix), the conversion is given by::
+        //        From Wikipedia (http://en.wikipedia.org/wiki/Rotation_matrix), the conversion is given by::
 
-                    x = Qzy-Qyz
-                    y = Qxz-Qzx
-                    z = Qyx-Qxy
-                    r = hypot(x,hypot(y,z))
-                    t = Qxx+Qyy+Qzz
-                    theta = atan2(r,t-1)
-            */
-        }
+        //            x = Qzy-Qyz
+        //            y = Qxz-Qzx
+        //            z = Qyx-Qxy
+        //            r = hypot(x,hypot(y,z))
+        //            t = Qxx+Qyy+Qzz
+        //            theta = atan2(r,t-1)
+        //    */
+        //}
     }
 
     /// <summary>
@@ -449,13 +446,21 @@ namespace SDF
 
             this.Scale(scale);
 
-            this.Pose = new Pose(linkpose);
+            //this.Pose = new Pose(linkpose);
+            //TODO: get precision
+            this.Pose = new Pose(COM[0], COM[1], COM[2], 8, scale);
             this.Pose.Position = COM;
             this.Pose.Scale(scale);
 
             this.Pose.SetRelative(linkpose);
+
             //TODO: Get rid of this..
             //this.Pose.Rotation = new double[3] { 0, 0, 0 };
+            Matrix<double> Link = linkpose.niceMatrix(linkpose.matrix);
+            Matrix<double> Inertia = DenseMatrix.OfArray(this.InertiaMatrix);
+            Matrix<double> M = Link * Inertia * Link.Transpose();
+            this.InertiaMatrix = M.ToArray();
+            this.ProcessMatrix();
         }
 
         public void Scale(double scale)
@@ -464,7 +469,7 @@ namespace SDF
             for (i = 0; i < 6; i++)
             {
                 //TODO: Maybe cube?
-                InertiaVector[i] *= scale;
+                InertiaVector[i] *= scale*scale;
             }
             this.ProcessVector();
         } 
@@ -925,47 +930,47 @@ namespace SDF
             values = new double[3] { x, y, z };
         }
 
-        public Axis(double x, double y, double z, Pose child)
-        {
-            values = new double[3] { x, y, z };
+        //public Axis(double x, double y, double z, Pose child)
+        //{
+        //    values = new double[3] { x, y, z };
 
-            //Skip if the parent Pose doesn't have enough rotation information.
-            if (child.axisAngle == null)
-            {
-                if (x < 0) { x *= -1; }
-                if (y < 0) { y *= -1; }
-                if (z < 0) { z *= -1; }
+        //    //Skip if the parent Pose doesn't have enough rotation information.
+        //    if (child.axisAngle == null)
+        //    {
+        //        if (x < 0) { x *= -1; }
+        //        if (y < 0) { y *= -1; }
+        //        if (z < 0) { z *= -1; }
 
-                values = new double[3] { x, y, z };
+        //        values = new double[3] { x, y, z };
 
-                return;
-            }
+        //        return;
+        //    }
 
-            Quaternion Wg = new Quaternion(x, y, z, 0);
-            ////MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
+        //    Quaternion Wg = new Quaternion(x, y, z, 0);
+        //    ////MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
 
-            //Quaternion Wg = new Quaternion(0, 0, 1, 0);
+        //    //Quaternion Wg = new Quaternion(0, 0, 1, 0);
 
-            double[] Rc = child.axisAngle;
-            Quaternion qC = new Quaternion(new Vector3D(Rc[1], Rc[2], Rc[3]), Rc[0]*180/Math.PI);
+        //    double[] Rc = child.axisAngle;
+        //    Quaternion qC = new Quaternion(new Vector3D(Rc[1], Rc[2], Rc[3]), Rc[0]*180/Math.PI);
 
-            Quaternion qC1 = qC;
-            qC1.Invert();
+        //    Quaternion qC1 = qC;
+        //    qC1.Invert();
 
-            Quaternion Wc = qC * (Wg * qC1);
+        //    Quaternion Wc = qC * (Wg * qC1);
 
-            Quaternion Qt = new Quaternion(0, 0.707120, 0, 0.70712);
-            Quaternion Wt = new Quaternion(1, 0, 0, 0);
-            Quaternion Qt1 = Qt;
-            Qt1.Invert();
-            Quaternion Wt_ = Qt * Wt * Qt1;
+        //    Quaternion Qt = new Quaternion(0, 0.707120, 0, 0.70712);
+        //    Quaternion Wt = new Quaternion(1, 0, 0, 0);
+        //    Quaternion Qt1 = Qt;
+        //    Qt1.Invert();
+        //    Quaternion Wt_ = Qt * Wt * Qt1;
 
-            values = new double[3] { Wc.X, Wc.Y, Wc.Z };
+        //    values = new double[3] { Wc.X, Wc.Y, Wc.Z };
 
-            if (values[0] < 0) { values[0] *= -1; }
-            if (values[1] < 0) { values[1] *= -1; }
-            if (values[2] < 0) { values[2] *= -1; }
-        }
+        //    if (values[0] < 0) { values[0] *= -1; }
+        //    if (values[1] < 0) { values[1] *= -1; }
+        //    if (values[2] < 0) { values[2] *= -1; }
+        //}
 
         public void Round(int precision)
         {
@@ -980,7 +985,6 @@ namespace SDF
         {
             if (values != null)
             {
-                Round(internalprecision);
                 return values[0].ToString() + " " + values[1].ToString() + " " + values[2].ToString();
             }
             else
