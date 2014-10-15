@@ -266,6 +266,7 @@ namespace SDFConverter
                     parentP = temp;
                 }
 
+                //Get Model Links
                 Link child = GetLinkByName(RemoveColon(childP.Name));
                 Link parent = GetLinkByName(RemoveColon(parentP.Name));
                 if (child == null || parent == null)
@@ -274,66 +275,44 @@ namespace SDFConverter
                     WriteLine("Skipped a constraint without a Link.");
                     continue;
                 }
+
+                //Get constraint information
                 Pose Pose;
                 Axis Axis;
                 Inventor.Point Geomcenter;
                 if (constraint is InsertConstraint)
                 {
+                    //Handle Insert Constraints (Revolute)
                     Circle circ = (Circle)constraint.GeometryOne;
                     Geomcenter = circ.Center;
+                    Axis = new Axis(circ.Normal.X, circ.Normal.Y, circ.Normal.Z);
+                    type = JointType.Revolute;
+                }
+                else if (constraint is MateConstraint)
+                {
+                    //Handle Mate Constraints (Prismatic)
+                    Inventor.Line line = (Line)constraint.GeometryOne;
+                    Geomcenter = line.RootPoint;
+                    Axis = new Axis(line.Direction.X, line.Direction.X, line.Direction.X);
+                    type = JointType.Prismatic;
                 }
                 else
                 {
-                    //TODO: Mate constraint
-                    Geomcenter = null;
+                    //Skip other constraints
+                    WriteLine("Skipped an uknown constraint");
+                    continue;
                 }
+                Pose = new Pose(Geomcenter.X, Geomcenter.Y, Geomcenter.Z, precision, scale);
 
                 WriteLine("New joint:          --------------------------------------");
                 WriteLine("                Name: " + name);
                 WriteLine("              Parent: " + parent.Name);
                 WriteLine("               Child: " + child.Name);
-                WriteLine("           DOFCenter: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
-                WriteLine("          GeomCenter: " + Geomcenter.X + ", " + Geomcenter.Y + ", " + Geomcenter.Z);
-                Pose = new Pose(Geomcenter.X, Geomcenter.Y, Geomcenter.Z, precision);
-                Pose.Scale(scale);
+                WriteLine("                Pose: " + Pose.ToString());
                 Pose.SetRelative(child.Pose);
                 WriteLine("           Child Loc: " + child.Pose.ToString());
-                WriteLine("                Pose: " + Pose.ToString());
+                WriteLine("       Relative Pose: " + Pose.ToString());
                 WriteLine("              rotDOF: " + rotDOFCount + "    transDOF: " + transDOFCount);
-
-
-                
-
-                //If we have a translational DOF
-                if (transDOF.Count > 0)
-                {
-                    //Assume ONLY prismatic
-                    type = JointType.Prismatic;
-
-                    //Define translational axis.
-                    Vector i = transDOF[1];
-                    Axis = new Axis(i.X, i.Y, i.Z /*,child.Pose*/); 
-
-                    WriteLine("                Type: Prismatic");
-                    WriteLine("                Axis: " + Axis.ToString());
-                }
-                else if (rotDOF.Count > 0)
-                {
-                    //Assume ONLY revolute.
-                    type = JointType.Revolute;
-                    
-                    //Define rotational axis.
-                    Vector i = rotDOF[1];
-                    Axis = new Axis(i.X, i.Y, i.Z /*,child.Pose*/); 
-
-                    WriteLine("                Type: Revolute");
-                    WriteLine("                Axis: " + Axis.ToString());
-                }
-                else
-                {
-                    //Skip this constraint, no degrees of freedom.
-                    continue;
-                }
 
                 //Add the joint to the robot
                 Joint joint = new Joint(name, type);
@@ -345,6 +324,7 @@ namespace SDFConverter
 
             }
 
+            //Saving turned on?
             if (this.checkBox2.Checked)
             {
                 // Save the SDF
@@ -354,7 +334,7 @@ namespace SDFConverter
                     robo.WriteSDFToFile(folderDialog1.SelectedPath, precision);
                 }
 
-                //Save STL
+                //Save STLs?
                 foreach (ComponentOccurrence oCompOccur in compOccurs)
                 {
                     if (oCompOccur.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject && this.checkBox1.Checked)

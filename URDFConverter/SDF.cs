@@ -248,6 +248,7 @@ namespace SDF
         {
             Position = new double[3] { x, y, z };
             Rotation = new double[3] { 0, 0, 0 };
+            Scale(positionScale);
         }
 
         public void Round(int precision)
@@ -282,6 +283,7 @@ namespace SDF
                     {M.get_Cell(3,1), M.get_Cell(3,2), M.get_Cell(3,3)}
                 });
                MessageBox.Show( M1.ToMatrixString() );
+               //M1.Transpose();
 
                 Vector<double> vec =  M1.Multiply(DenseVector.OfArray(this.Position));
 
@@ -315,7 +317,7 @@ namespace SDF
 
                 Position = new double[] { output.X, output.Y, output.Z };*/
             }
-            
+
         }
 
         public void Scale (double scale)
@@ -424,9 +426,7 @@ namespace SDF
             this.InertiaMatrix = inertiaMatrix;
             this.ProcessMatrix();
 
-            if (scale != 1) {
-                this.Scale(scale);
-            }
+            this.Scale(scale);
 
             if (linkpose.matrix != null) {
 
@@ -439,6 +439,7 @@ namespace SDF
                 this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
             }
             this.Pose.SetRelative(linkpose);
+            //TODO: Get rid of this..
             this.Pose.Rotation = new double[3] { 0, 0, 0 };
         }
 
