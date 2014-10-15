@@ -12,6 +12,7 @@ using System.Windows.Forms;
 using SDF;
 using Inventor;
 using System.Diagnostics;
+using MathNet.Numerics;
 
 namespace SDFConverter
 {
@@ -21,6 +22,7 @@ namespace SDFConverter
         Robot robo;
         bool _started = false;
         int precision = 8;
+        double scale = 0.01;
 
         public Form1()
         {
@@ -125,11 +127,6 @@ namespace SDFConverter
             }
         }
 
-        public void RefreshView()
-        {
-            this.label_output.Text = robo.WriteSDFToString();
-        }
-
         public ComponentOccurrence[] GetCompOccurFromAss(AssemblyComponentDefinition asmCompDef) {
             return new ComponentOccurrence[asmCompDef.Occurrences.Count];
         }
@@ -186,65 +183,43 @@ namespace SDFConverter
                 Link link = new Link(RemoveColon(oCompOccur.Name));
 
                 //Get global position and COM
-                Inventor.Vector pos = oCompOccur.Transformation.Translation;
                 double Mass = oCompOccur.MassProperties.Mass;
-                pos = UpdateUnits(pos);
 
                 //Calculate rotation.
                 Inventor.Matrix R1 = oCompOccur.Transformation;
-                double[] Er = new double[3] {0,0,0};
-                double cy_thresh = 0.00000004;
-                double cy = Math.Sqrt(Math.Pow(R1.get_Cell(3, 3), 2) + Math.Pow(R1.get_Cell(3, 2), 2));
-                if (cy > cy_thresh)
-                {
-                    Er[2] = Math.Atan2(R1.get_Cell(2, 1), R1.get_Cell(1, 1));//Z
-                    Er[1] = Math.Atan2(- R1.get_Cell(3, 1), cy);//Y
-                    Er[0] = Math.Atan2(R1.get_Cell(3, 2), R1.get_Cell(3, 3));//X
-                }
-                else
-                {
-                    Er[2] = Math.Atan2(R1.get_Cell(1, 3), R1.get_Cell(2, 2));//Z
-                    Er[1] = Math.Atan2(-R1.get_Cell(3, 1), cy);//Y
-                    Er[0] = 0;//X
-                }
+
+                // Set position and rotation
+                //TODO: Check globalised scale
+                link.Pose = new Pose(R1, precision, scale);
 
                 // Get Moments of Inertia.
                 double[] iXYZ = new double[6];
+                //TODO: Set a Inertial pose.
+                //Pos of C.O.M., Rot of Link.
                 oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
 
                 //Round to a sane number of decimal places.
-                pos.X = Math.Round(pos.X, precision);
-                pos.Y = Math.Round(pos.Y, precision);
-                pos.Z = Math.Round(pos.Z, precision);
                 Mass = Math.Round(Mass, precision);
                 int i = 0;
-                for (i = 0; i < 3; i++)
-                {
-                    Er[i] = Math.Round(Er[i], precision);
-                }
                 for (i = 0; i < 6; i++)
                 {
+                    iXYZ[i] *= scale;
                     iXYZ[i] = Math.Round(iXYZ[i], precision);
                 }
-
-                // Set position and rotation
-                link.Pose = new Pose(pos.X, pos.Y, pos.Z, Er[0], Er[1], Er[2]);
 
                 // Set Moments of Inertia
                 link.Inertial = new Inertial(Mass, iXYZ);
                 //link.Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
 
                 // Set the URI for the link's model.
-                String URI = "model://" + robo.Name + "/meshes/" + link.Name + ".stl";
-                double scale = Convert.ToDouble(this.textBox1.Text);
+                String URI = "model://<MODELNAME>/meshes/" + link.Name + ".stl";
                 link.Visual = new Visual(new Mesh(URI, scale));
                 link.Collision = new Collision(new Mesh(URI, scale));
 
                 // Print out link information.
                 WriteLine("New Link:          --------------------------------------");
                 WriteLine("                  Name: " + link.Name);
-                WriteLine("           Translation: " + pos.X + ", " + pos.Y + ", " + pos.Z);
-                WriteLine("              Rotation: " + Er[0] + ", " + Er[1] + ", " + Er[2]);
+                WriteLine("                  Pose: " + link.Pose.ToString());
                 WriteLine("                  Mass: " + Mass);
 
                 // Add link to robot
@@ -263,9 +238,12 @@ namespace SDFConverter
                     continue;
                 }
 
+                //Set some starting variables.
                 String name = constraint.Name;
                 Inventor.Point center;
                 JointType type = JointType.Revolute;
+
+                //Calculate which should be child.
                 ComponentOccurrence childP = constraint.OccurrenceOne;
                 ComponentOccurrence parentP = constraint.OccurrenceTwo;
                 if (childP == null || parentP == null) {
@@ -273,6 +251,26 @@ namespace SDFConverter
                     WriteLine("Skipped a constraint without an Occurance.");
                     continue;
                 }
+
+                //Get degrees of freedom information.
+                int transDOFCount, rotDOFCount;
+                Inventor.ObjectsEnumerator transDOF, rotDOF;
+                Inventor.Point DOFCenter;
+                childP.GetDegreesOfFreedom(out transDOFCount, out transDOF, out rotDOFCount, out rotDOF, out DOFCenter);
+                if (rotDOFCount + transDOFCount == 0)
+                {
+                    parentP.GetDegreesOfFreedom(out transDOFCount, out transDOF, out rotDOFCount, out rotDOF, out DOFCenter);
+                    if (rotDOFCount + transDOFCount == 0)
+                    {
+                        WriteLine("Skipped a constraint with 0 DOF.");
+                        continue;
+                    }
+                    //Parent has DOF but child doesn't. Switch Parent and Child.
+                    ComponentOccurrence temp = childP;
+                    childP = parentP;
+                    parentP = temp;
+                }
+
                 Link child = GetLinkByName(RemoveColon(childP.Name));
                 Link parent = GetLinkByName(RemoveColon(parentP.Name));
                 if (child == null || parent == null)
@@ -288,21 +286,16 @@ namespace SDFConverter
                 WriteLine("                Name: " + name);
                 WriteLine("              Parent: " + parent.Name);
                 WriteLine("               Child: " + child.Name);
-
-
-
-                //Get degrees of freedom information.
-                int transDOFCount, rotDOFCount;
-                Inventor.ObjectsEnumerator transDOF, rotDOF;
-                Inventor.Point DOFCenter;
-                childP.GetDegreesOfFreedom(out transDOFCount, out transDOF, out rotDOFCount, out rotDOF, out DOFCenter);
-
                 WriteLine("            Location: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
-
-
-                Pose = new Pose(DOFCenter.X, DOFCenter.Y, DOFCenter.Z);
+                Pose = new Pose(DOFCenter.X, DOFCenter.Y, DOFCenter.Z, precision);
+                Pose.Scale(scale);
                 Pose.SetRelative(child.Pose);
-                Pose.Scale(0.01);
+                WriteLine("           Child Loc: " + child.Pose.ToString());
+                WriteLine("                Pose: " + Pose.ToString());
+                WriteLine("              rotDOF: " + rotDOFCount + "    transDOF: " + transDOFCount);
+
+
+                
 
                 //If we have a translational DOF
                 if (transDOF.Count > 0)
@@ -312,10 +305,10 @@ namespace SDFConverter
 
                     //Define translational axis.
                     Vector i = transDOF[1];
-                    Axis = new Axis(i.X, i.Y, i.Z, Pose); 
+                    Axis = new Axis(i.X, i.Y, i.Z /*,child.Pose*/); 
 
                     WriteLine("                Type: Prismatic");
-                    WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
+                    WriteLine("                Axis: " + Axis.ToString());
                 }
                 else if (rotDOF.Count > 0)
                 {
@@ -324,10 +317,10 @@ namespace SDFConverter
                     
                     //Define rotational axis.
                     Vector i = rotDOF[1];
-                    Axis = new Axis(i.X, i.Y, i.Z, Pose); 
+                    Axis = new Axis(i.X, i.Y, i.Z /*,child.Pose*/); 
 
                     WriteLine("                Type: Revolute");
-                    WriteLine("                Axis: " + i.X + ", " + i.Y + ", " + i.Z);
+                    WriteLine("                Axis: " + Axis.ToString());
                 }
                 else
                 {
@@ -348,13 +341,10 @@ namespace SDFConverter
             if (this.checkBox2.Checked)
             {
                 // Save the SDF
-                SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-
-                saveFileDialog1.Filter = "SDF File (Gazebo) (*.sdf)|*.sdf";
-                saveFileDialog1.RestoreDirectory = true;
-                if (saveFileDialog1.ShowDialog() == DialogResult.OK)
+                FolderBrowserDialog folderDialog1 = new FolderBrowserDialog();
+                if (folderDialog1.ShowDialog() == DialogResult.OK)
                 {
-                    robo.WriteSDFToFile(saveFileDialog1.FileName);
+                    robo.WriteSDFToFile(folderDialog1.SelectedPath, precision);
                 }
 
                 //Save STL
@@ -363,11 +353,8 @@ namespace SDFConverter
                     if (oCompOccur.DefinitionDocumentType == DocumentTypeEnum.kPartDocumentObject && this.checkBox1.Checked)
                     {
                         PartDocument partDoc = (PartDocument)oCompOccur.Definition.Document;
-                        String[] splitPath = saveFileDialog1.FileName.Split(new String[1]{"\\"}, StringSplitOptions.None);
-                        splitPath[splitPath.Length - 1] = "";
-                        String path = string.Join("\\", splitPath);
-                        partDoc.SaveAs(path + "meshes\\" + RemoveColon(oCompOccur.Name) + ".stl", true);
-                        WriteLine("Finished saving: " + path + "meshes\\" + RemoveColon(oCompOccur.Name) + ".stl");
+                        partDoc.SaveAs(folderDialog1.SelectedPath + "\\meshes\\" + RemoveColon(oCompOccur.Name) + ".stl", true);
+                        WriteLine("Finished saving: " + folderDialog1.SelectedPath + "\\meshes\\" + RemoveColon(oCompOccur.Name) + ".stl");
                     }
                 }
             }
@@ -542,6 +529,7 @@ namespace SDFConverter
         {
             //Clear current SDF
             Reload();
+            scale = Convert.ToDouble(this.textBox1.Text);
             //Generate
             this.buttonGen.Visible = false;
             GenerateSDF();

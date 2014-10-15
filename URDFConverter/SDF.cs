@@ -6,9 +6,12 @@ using System.Text;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Xml;
 using System.Xml.Schema;
+using System.Windows.Media.Media3D;
+using System.Windows.Forms;
 
 
-using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics;
+using System.Text.RegularExpressions;
 
 namespace SDF
 {
@@ -20,7 +23,7 @@ namespace SDF
     public class Robot : ICloneable
     {
         public string Name { get; set; }
-        public Pose Pose = new Pose(0,0,0);
+        public Pose Pose = new Pose(0,0,0, 1);
         public List<Link> Links = new List<Link>();
         public List<Joint> Joints = new List<Joint>();
 
@@ -44,24 +47,24 @@ namespace SDF
             return obj;
         }
 
-        public void WriteSDFToWriter(XmlWriter SDFWriter)
+        public void WriteSDFToWriter(XmlWriter SDFWriter, string name, int precision)
         {
             SDFWriter.WriteStartDocument(false);
             SDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
             SDFWriter.WriteStartElement("sdf");
             SDFWriter.WriteAttributeString("version", "1.5");
             SDFWriter.WriteStartElement("model");
-            SDFWriter.WriteAttributeString("name", this.Name);
-            Pose.PrintPoseTag((XmlTextWriter)SDFWriter);
+            SDFWriter.WriteAttributeString("name", name);
+            Pose.PrintPoseTag((XmlTextWriter)SDFWriter, precision);
 
             foreach (Link link in Links)
             {
-                link.PrintLinkTag((XmlTextWriter)SDFWriter);
+                link.PrintLinkTag((XmlTextWriter)SDFWriter, precision, name);
             }
 
             foreach (Joint joint in Joints)
             {
-                joint.PrintJointTag((XmlTextWriter)SDFWriter);
+                joint.PrintJointTag((XmlTextWriter)SDFWriter, precision);
             }
 
             SDFWriter.WriteEndElement();//</model>
@@ -71,24 +74,26 @@ namespace SDF
             SDFWriter.Flush();
         }
 
-        public String WriteSDFToString()
+        public String WriteSDFToString(int precision)
         {
             using (var sw = new StringWriter())
             {
                 using (var SDFWriter = XmlWriter.Create(sw))
                 {
-                    WriteSDFToWriter(SDFWriter);
+                    WriteSDFToWriter(SDFWriter, "test_string", precision);
                   
                 }
                 return sw.ToString();
             }
         }
 
-        public void WriteSDFToFile(string filename)
+        public void WriteSDFToFile(string filepath, int precision)
         {
-            XmlTextWriter SDFWriter = new XmlTextWriter(filename, null);
+            XmlTextWriter SDFWriter = new XmlTextWriter(filepath + "\\model.sdf", null);
 
-            WriteSDFToWriter((XmlWriter)SDFWriter);
+            String modelname = filepath.Split(new Char[] { '\\' })[filepath.Split(new Char[] { '\\' }).Count() - 1];
+
+            WriteSDFToWriter((XmlWriter)SDFWriter, modelname, precision);
 
             SDFWriter.Formatting = Formatting.Indented;
             SDFWriter.Indentation = 4;
@@ -98,30 +103,20 @@ namespace SDF
             SDFWriter.Close();
             if (SDFWriter != null)
                 SDFWriter.Close();
-        }
 
-        public void WriteSDFToFileOld(string filename)
-        {
-            XmlTextWriter SDFWriter = new XmlTextWriter(filename, null);
-            SDFWriter.Formatting = Formatting.Indented;
+            //Write model.config
+            SDFWriter = new XmlTextWriter(filepath + "\\model.config", null);
             SDFWriter.WriteStartDocument(false);
-            SDFWriter.WriteComment(" Exported at " + DateTime.Now.ToString() + " ");
-            SDFWriter.WriteStartElement("robot");
-            SDFWriter.WriteAttributeString("name", this.Name);
 
-            foreach (Link link in Links)
-            {
-                link.PrintLinkTag(SDFWriter);
-            }
-
-            foreach (Joint joint in Joints)
-            {
-                joint.PrintJointTag(SDFWriter);
-            }
-
+            SDFWriter.WriteStartElement("model");
+            SDFWriter.WriteElementString("name", modelname);
+            SDFWriter.WriteElementString("version", "1.0");
+            SDFWriter.WriteStartElement("sdf");
+            SDFWriter.WriteAttributeString("version", "1.5");
+            SDFWriter.WriteRaw("model.sdf");
+            SDFWriter.WriteEndElement();
             SDFWriter.WriteEndElement();
 
-            //Write the XML to file and close the writer
             SDFWriter.Flush();
             SDFWriter.Close();
             if (SDFWriter != null)
@@ -165,7 +160,7 @@ namespace SDF
             return obj;
         }
 
-        public void PrintLinkTag(XmlTextWriter SDFWriter)
+        public void PrintLinkTag(XmlTextWriter SDFWriter, int precision, String foldername)
         {
             /* <link name="...">
              *     <inertial>
@@ -183,19 +178,19 @@ namespace SDF
             SDFWriter.WriteAttributeString("name", this.Name);
             if (this.Pose != null)
             {
-                this.Pose.PrintPoseTag(SDFWriter);
+                this.Pose.PrintPoseTag(SDFWriter, precision);
             }
             if (this.Inertial != null)
             {
-                this.Inertial.PrintInertialTag(SDFWriter);
+                this.Inertial.PrintInertialTag(SDFWriter, precision);
             }
             if (this.Visual != null)
             {
-                this.Visual.PrintVisualTag(SDFWriter, this.Name);
+                this.Visual.PrintVisualTag(SDFWriter, this.Name, foldername);
             }
             if (this.Collision != null)
             {
-                this.Collision.PrintCollisionTag(SDFWriter, this.Name);
+                this.Collision.PrintCollisionTag(SDFWriter, this.Name, foldername);
             }
             SDFWriter.WriteEndElement();
         }
@@ -210,25 +205,99 @@ namespace SDF
         public double[] Position { get; set; }
         public double[] Rotation { get; set; }
 
-        public Pose(double x, double y, double z, double Ex, double Ey, double Ez)
+        public double[] axisAngle { get; private set; }
+        public Inventor.Matrix matrix {get; private set;}
+
+        private int internalprecision = 8;
+
+        //If rotation given, we need more info
+        public Pose(Inventor.Matrix R1, int precision, double positionScale = 1)
         {
-            Position = new double[3] {x,y,z};
-            Rotation = new double[3] {Ex,Ey,Ez};
+            //Get global position and rotation
+            Inventor.Vector pos = R1.Translation;
+            internalprecision = precision;
+            matrix = R1;
+
+            //Calculate rotation.
+            double[] Er = new double[3] { 0, 0, 0 };
+            double cy_thresh = 0.00000004;
+            double cy = Math.Sqrt(Math.Pow(R1.get_Cell(3, 3), 2) + Math.Pow(R1.get_Cell(3, 2), 2));
+            if (cy > cy_thresh)
+            {
+                Er[2] = Math.Atan2(R1.get_Cell(2, 1), R1.get_Cell(1, 1));//Z
+                Er[1] = Math.Atan2(-R1.get_Cell(3, 1), cy);//Y
+                Er[0] = Math.Atan2(R1.get_Cell(3, 2), R1.get_Cell(3, 3));//X
+            }
+            else
+            {
+                Er[2] = Math.Atan2(R1.get_Cell(1, 3), R1.get_Cell(2, 2));//Z
+                Er[1] = Math.Atan2(-R1.get_Cell(3, 1), cy);//Y
+                Er[0] = 0;//X
+            }
+
+            Position = new double[3] {pos.X, pos.Y, pos.Z};
+            Rotation = Er;
+
+            Scale(positionScale);
+
+            SetAxisAngle(R1);
         }
 
-        public Pose(double x, double y, double z)
+        public Pose(double x, double y, double z, int precision)
         {
             Position = new double[3] { x, y, z };
             Rotation = new double[3] { 0, 0, 0 };
         }
 
+        public void Round(int precision)
+        {
+            //Set rounded values.
+            int i = 0;
+            for (i = 0; i < 3; i++)
+            {
+                Rotation[i] = Math.Round(Rotation[i], precision);
+                Position[i] = Math.Round(Position[i], precision);
+            }
+        }
+
         public void SetRelative(Pose pose)
         {
             int i;
-            for (i=0; i < 3; i++) {
+
+            for (i = 0; i < 3; i++)
+            {
                 Position[i] -= pose.Position[i];
-                //TODO: Check if this is valid.
-                Rotation[i] -= pose.Rotation[i];
+            }
+
+            if (pose.matrix != null)
+            {
+                //pose.matrix*Position
+                Inventor.Matrix M = pose.matrix;
+
+                int x;
+                int y;
+                string str = "Pose Relativematrix: " + Environment.NewLine;
+                double[] dub = new double[1000];
+                for (x = 1; x < 4; x++)
+                {
+                    for (y = 1; y < 4; y++)
+                    {
+                        str += M.get_Cell(x, y) + " ";
+                    }
+                    str += Environment.NewLine;
+                }
+                MessageBox.Show(str);
+
+                Vector3D[] vec = new Vector3D[3];
+                for (i = 0; i < 3; i++)
+                {
+                    vec[i].X = M.get_Cell(1, i + 1);
+                    vec[i].Y = M.get_Cell(2, i + 1);
+                    vec[i].Z = M.get_Cell(3, i + 1);
+                }
+                Vector3D output = Position[0] * vec[0] + Position[1] * vec[1] + Position[2] * vec[2];
+
+                Position = new double[] { output.X, output.Y, output.Z };
             }
             
         }
@@ -241,13 +310,79 @@ namespace SDF
             }
         }
 
-        public void PrintPoseTag(XmlTextWriter SDFWriter)
+        public string ToString()
         {
+            Round(internalprecision);
+            return Position[0] + " " + Position[1] + " " + Position[2] + " " + Rotation[0] + " " + Rotation[1] + " " + Rotation[2];
+        }
+
+        public void PrintPoseTag(XmlTextWriter SDFWriter, int precision)
+        {
+            Round(precision);
             SDFWriter.WriteStartElement("pose");
             string pos = Position[0].ToString() + " " + Position[1].ToString() + " " + Position[2].ToString();
             string rot = Rotation[0].ToString() + " " + Rotation[1].ToString() + " " + Rotation[2].ToString();
             SDFWriter.WriteRaw(pos + " " + rot);
             SDFWriter.WriteEndElement();
+        }
+
+        public void SetAxisAngle(Inventor.Matrix R1) {
+            
+            /*R1.SetToIdentity();
+            R1.set_Cell(1, 1, Math.Cos(0.78539816339));
+            R1.set_Cell(1, 2, -Math.Sin(0.78539816339));
+            R1.set_Cell(2, 1, Math.Sin(0.78539816339));
+            R1.set_Cell(2, 2, Math.Cos(0.78539816339));*/
+            int x;
+            int y;
+            string str = "Pose matrix: " + Environment.NewLine;
+            double[] dub = new double[1000];
+            for (x = 1; x < 4; x++ )
+            {
+                for (y = 1; y < 4; y++)
+                {
+                    str += R1.get_Cell(x, y) + " ";
+                }
+                str += Environment.NewLine;
+            }
+            MessageBox.Show(str);
+
+            //Axis
+            double[] axis = new double[3] { 0, 0, 0};
+            axis[0] = R1.get_Cell(3, 2) - R1.get_Cell(2, 3);
+            axis[1] = R1.get_Cell(1, 3) - R1.get_Cell(3, 1);
+            axis[2] = R1.get_Cell(2, 1) - R1.get_Cell(1, 2);
+            //Angle
+            double r = Math.Sqrt(Math.Pow(axis[1], 2) + Math.Pow(axis[2], 2));
+            r = Math.Sqrt(Math.Pow(axis[0], 2) + Math.Pow(r, 2));
+            double t = R1.get_Cell(1, 1) + R1.get_Cell(2, 2) + R1.get_Cell(3, 3);
+            double theta = Math.Atan2(r, t - 1);
+            //Normalise
+            int i;
+            for (i = 0; i < 3; i++) {
+                axis[i] = axis[i] / r;
+            }
+
+            //Return
+            axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
+
+
+            //MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
+
+            /* Convert the rotation matrix into the axis-angle notation.
+
+                Conversion equations
+                ====================
+
+                From Wikipedia (http://en.wikipedia.org/wiki/Rotation_matrix), the conversion is given by::
+
+                    x = Qzy-Qyz
+                    y = Qxz-Qzx
+                    z = Qyx-Qxy
+                    r = hypot(x,hypot(y,z))
+                    t = Qxx+Qyy+Qzz
+                    theta = atan2(r,t-1)
+            */
         }
     }
 
@@ -270,12 +405,7 @@ namespace SDF
         {
             this.Mass = mass;
             this.InertiaMatrix = inertiaMatrix;
-            this.InertiaVector = new double[] { inertiaMatrix[0, 0], 
-                inertiaMatrix[0, 1], 
-                inertiaMatrix[0, 2], 
-                inertiaMatrix[1, 1], 
-                inertiaMatrix[1, 2], 
-                inertiaMatrix[2, 2] };
+            this.ProcessMatrix();
         }
 
         /// <summary>
@@ -287,13 +417,38 @@ namespace SDF
         {
             this.Mass = mass;
             this.InertiaVector = inertiaVector;
-            this.InertiaMatrix = new double[,] { 
-                { inertiaVector[0], inertiaVector[1], inertiaVector[2] },
-                { inertiaVector[1], inertiaVector[3], inertiaVector[4] },
-                { inertiaVector[2], inertiaVector[4], inertiaVector[5] } };
+            this.ProcessVector();
         }
 
-        public void PrintInertialTag(XmlTextWriter SDFWriter)
+        public void ProcessVector()
+        {
+            this.InertiaMatrix = new double[,] { 
+                { this.InertiaVector[0], this.InertiaVector[1], this.InertiaVector[2] },
+                { this.InertiaVector[1], this.InertiaVector[3], this.InertiaVector[4] },
+                { this.InertiaVector[2], this.InertiaVector[4], this.InertiaVector[5] } };
+        }
+
+        public void ProcessMatrix()
+        {
+            this.InertiaVector = new double[] { this.InertiaMatrix[0, 0], 
+                this.InertiaMatrix[0, 1], 
+                this.InertiaMatrix[0, 2], 
+                this.InertiaMatrix[1, 1], 
+                this.InertiaMatrix[1, 2], 
+                this.InertiaMatrix[2, 2] };
+        }
+
+        public void Round(int precision)
+        {
+            int i;
+            for (i = 0; i < 6;i++ )
+            {
+                InertiaVector[i] = Math.Round(InertiaVector[i], precision);
+            }
+            this.ProcessMatrix();
+        }
+
+        public void PrintInertialTag(XmlTextWriter SDFWriter, int precision)
         {
             /* <inertial>
              *     <origin xyz="# # #" rpy="# # #"/>
@@ -301,6 +456,7 @@ namespace SDF
              *     <inertia ixx="#"  ixy="#"  ixz="#" iyy="#" iyz="#" izz="#" />
              * </inertial>
              */
+            this.Round(precision);
             SDFWriter.WriteStartElement("inertial");
             SDFWriter.WriteElementString("mass", this.Mass.ToString());
             SDFWriter.WriteStartElement("inertia");
@@ -335,7 +491,7 @@ namespace SDF
             this.Material = material;
         }
 
-        public void PrintVisualTag(XmlTextWriter SDFWriter, String linkName)
+        public void PrintVisualTag(XmlTextWriter SDFWriter, String linkName, String foldername)
         {
             /* <visual>
              *     <pose># # # # # #</pose>
@@ -349,7 +505,7 @@ namespace SDF
              */
             SDFWriter.WriteStartElement("visual");
             SDFWriter.WriteAttributeString("name", linkName + "_vis");
-            this.Shape.PrintGeometryTag(SDFWriter);
+            this.Shape.PrintGeometryTag(SDFWriter, foldername);
             if (Material != null)
             {
                 this.Material.PrintMaterialTag(SDFWriter);
@@ -405,7 +561,7 @@ namespace SDF
             this.Shape = shape;
         }
 
-        public void PrintCollisionTag(XmlTextWriter SDFWriter, String linkName)
+        public void PrintCollisionTag(XmlTextWriter SDFWriter, String linkName, String foldername)
         {
             /* <collision>
              *     <pose># # # # # #</pose>
@@ -416,7 +572,7 @@ namespace SDF
              */
             SDFWriter.WriteStartElement("collision");
             SDFWriter.WriteAttributeString("name", linkName + "_col");
-            this.Shape.PrintGeometryTag(SDFWriter);
+            this.Shape.PrintGeometryTag(SDFWriter, foldername);
             SDFWriter.WriteEndElement();
         }
     }
@@ -452,7 +608,7 @@ namespace SDF
         /// 
         /// </summary>
         /// <param name="SDFWriter"></param>
-        public virtual void PrintGeometryTag(XmlTextWriter SDFWriter)
+        public virtual void PrintGeometryTag(XmlTextWriter SDFWriter, String foldername)
         {
             // Insert code into inherited classes.
         }
@@ -473,7 +629,7 @@ namespace SDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter, String foldername)
         {
             /* <geometry>
              *     <box size="# # #"/>
@@ -498,7 +654,7 @@ namespace SDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter, String foldername)
         {
             /* <geometry>
              *     <cylinder radius="#" length="#"/>
@@ -524,7 +680,7 @@ namespace SDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter, String foldername)
         {
             /* <geometry>
              *     <sphere radius="#"/>
@@ -556,7 +712,7 @@ namespace SDF
         {
         }
 
-        public override void PrintGeometryTag(XmlTextWriter SDFWriter)
+        public override void PrintGeometryTag(XmlTextWriter SDFWriter, String foldername)
         {
             /* <geometry>
              *     <sphere filename="package://..." scale="#"/>
@@ -564,7 +720,8 @@ namespace SDF
              */
             SDFWriter.WriteStartElement("geometry");
             SDFWriter.WriteStartElement("mesh");
-            SDFWriter.WriteElementString("uri", Filename);
+            //TODO: Neaten up passing down values
+            SDFWriter.WriteElementString("uri", Filename.Replace("<MODELNAME>", foldername));
             if (this.Scale != null && this.Scale != 1)
             {
                 SDFWriter.WriteElementString("scale", this.Scale.ToString() + " " + this.Scale.ToString() + " " + this.Scale.ToString());
@@ -634,7 +791,7 @@ namespace SDF
             return obj;
         }
 
-        public void PrintJointTag(XmlTextWriter SDFWriter)
+        public void PrintJointTag(XmlTextWriter SDFWriter, int precision)
         {
             /* <joint name="..." type="...">
              *     <pose># # # # # #<pose/>
@@ -665,7 +822,7 @@ namespace SDF
             }
 
             if (Pose != null) {
-                Pose.PrintPoseTag(SDFWriter);
+                Pose.PrintPoseTag(SDFWriter, precision);
             }
 
             if (this.Axis != null)
@@ -705,7 +862,8 @@ namespace SDF
     [Serializable]
     public class Axis
     {
-        public double[] values { get; set; }
+        public double[] values { get; private set; }
+        private int internalprecision = 8;
 
         public Axis(double x, double y, double z)
         {
@@ -713,41 +871,78 @@ namespace SDF
             if (y < 0) { y *= -1; }
             if (z < 0) { z *= -1; }
 
-            values = new double[3] { 0, 0, 0 };
-
-            values[0] = x;
-            values[1] = y;
-            values[2] = z;
+            values = new double[3] { x, y, z };
         }
 
-        public Axis(double x, double y, double z, Pose parent)
+        public Axis(double x, double y, double z, Pose child)
         {
-            if (x < 0) { x *= -1; }
-            if (y < 0) { y *= -1; }
-            if (z < 0) { z *= -1; }
+            values = new double[3] { x, y, z };
 
-            values = new double[3] { 0, 0, 0 };
-            values[0] = x;
-            values[1] = y;
-            values[2] = z;
+            //Skip if the parent Pose doesn't have enough rotation information.
+            if (child.axisAngle == null)
+            {
+                if (x < 0) { x *= -1; }
+                if (y < 0) { y *= -1; }
+                if (z < 0) { z *= -1; }
 
-            //TODO: Set a relative axis.
-            //TODO: Original Rot matrix of child. http://svn.gna.org/svn/relax/tags/1.3.4/maths_fns/rotation_matrix.py def R_to_axis_angle(matrix):
-            //TODO: Then go to quaternian
-            //TODO: Then get relative.
-            //TODO: Then get axis angle.
+                values = new double[3] { x, y, z };
 
-            //Vector<double> vect = 
+                return;
+            }
 
-            // Ex parent.Rotation[0]
-            // Ey parent.Rotation[1]
-            // Ez parent.Rotation[2]
+            Quaternion Wg = new Quaternion(x, y, z, 0);
+            //MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
+
+            //Quaternion Wg = new Quaternion(0, 0, 1, 0);
+
+            double[] Rc = child.axisAngle;
+            Quaternion qC = new Quaternion(new Vector3D(Rc[1], Rc[2], Rc[3]), Rc[0]*180/Math.PI);
+
+            Quaternion qC1 = qC;
+            qC1.Invert();
+
+            Quaternion Wc = qC * (Wg * qC1);
+
+            Quaternion Qt = new Quaternion(0, 0.707120, 0, 0.70712);
+            Quaternion Wt = new Quaternion(1, 0, 0, 0);
+            Quaternion Qt1 = Qt;
+            Qt1.Invert();
+            Quaternion Wt_ = Qt * Wt * Qt1;
+
+            values = new double[3] { Wc.X, Wc.Y, Wc.Z };
+
+            if (values[0] < 0) { values[0] *= -1; }
+            if (values[1] < 0) { values[1] *= -1; }
+            if (values[2] < 0) { values[2] *= -1; }
+        }
+
+        public void Round(int precision)
+        {
+            int i;
+            for (i = 0; i < 3; i++)
+            {
+                values[i] = Math.Round(values[i], precision);
+            }
+        }
+
+        public string ToString()
+        {
+            if (values != null)
+            {
+                Round(internalprecision);
+                return values[0].ToString() + " " + values[1].ToString() + " " + values[2].ToString();
+            }
+            else
+            {
+                return "null";
+            }
         }
 
         public void PrintAxisTag(XmlTextWriter SDFWriter)
         {
             SDFWriter.WriteStartElement("axis");
-            SDFWriter.WriteElementString("xyz", this.values[0] + " " + this.values[1] + " " + this.values[3]);
+            SDFWriter.WriteElementString("xyz", this.values[0] + " " + this.values[1] + " " + this.values[2]);
+            SDFWriter.WriteElementString("use_parent_model_frame", "true");
             SDFWriter.WriteEndElement();
         }
     }
