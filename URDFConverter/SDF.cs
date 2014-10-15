@@ -216,8 +216,8 @@ namespace SDF
         {
             //Get global position and rotation
             Inventor.Vector pos = R1.Translation;
-            internalprecision = precision;
-            matrix = R1;
+            this.internalprecision = precision;
+            this.matrix = R1;
 
             //Calculate rotation.
             double[] Er = new double[3] { 0, 0, 0 };
@@ -236,19 +236,19 @@ namespace SDF
                 Er[0] = 0;//X
             }
 
-            Position = new double[3] {pos.X, pos.Y, pos.Z};
-            Rotation = Er;
+            this.Position = new double[3] {pos.X, pos.Y, pos.Z};
+            this.Rotation = Er;
 
-            Scale(positionScale);
+            this.Scale(positionScale);
 
-            SetAxisAngle(R1);
+            this.SetAxisAngle(R1);
         }
 
         public Pose(double x, double y, double z, int precision, double positionScale = 1)
         {
-            Position = new double[3] { x, y, z };
-            Rotation = new double[3] { 0, 0, 0 };
-            Scale(positionScale);
+            this.Position = new double[3] { x, y, z };
+            this.Rotation = new double[3] { 0, 0, 0 };
+            this.Scale(positionScale);
         }
 
         public void Round(int precision)
@@ -257,8 +257,8 @@ namespace SDF
             int i = 0;
             for (i = 0; i < 3; i++)
             {
-                Rotation[i] = Math.Round(Rotation[i], precision);
-                Position[i] = Math.Round(Position[i], precision);
+                this.Rotation[i] = Math.Round(this.Rotation[i], precision);
+                this.Position[i] = Math.Round(this.Position[i], precision);
             }
         }
 
@@ -268,7 +268,7 @@ namespace SDF
 
             for (i = 0; i < 3; i++)
             {
-                Position[i] = Position[i] - pose.Position[i];
+                this.Position[i] = this.Position[i] - pose.Position[i];
             }
 
             if (pose.matrix != null)
@@ -282,15 +282,15 @@ namespace SDF
                     {M.get_Cell(2,1), M.get_Cell(2,2), M.get_Cell(2,3)},
                     {M.get_Cell(3,1), M.get_Cell(3,2), M.get_Cell(3,3)}
                 });
-               MessageBox.Show( M1.ToMatrixString() );
                //M1.Transpose();
 
                 Vector<double> vec =  M1.Multiply(DenseVector.OfArray(this.Position));
 
                 MessageBox.Show(vec.ToVectorString());
 
-                Position = vec.ToArray();
+                this.Position = vec.ToArray();
 
+                #region old
                 /*
                 int x;
                 int y;
@@ -316,6 +316,7 @@ namespace SDF
                 Vector3D output = Position[0] * vec[0] + Position[1] * vec[1] + Position[2] * vec[2];
 
                 Position = new double[] { output.X, output.Y, output.Z };*/
+                #endregion
             }
 
         }
@@ -324,26 +325,42 @@ namespace SDF
         {
             int i;
             for (i=0; i < 3; i++) {
-                Position[i] *= scale;
+                this.Position[i] *= scale;
             }
         }
 
         public string ToString()
         {
-            Round(internalprecision);
-            return Position[0] + " " + Position[1] + " " + Position[2] + " " + Rotation[0] + " " + Rotation[1] + " " + Rotation[2];
+            this.Round(internalprecision);
+            return this.Position[0] + " " + this.Position[1] + " " + this.Position[2] + " " + this.Rotation[0] + " " + this.Rotation[1] + " " + this.Rotation[2];
         }
 
         public void PrintPoseTag(XmlTextWriter SDFWriter, int precision)
         {
-            Round(precision);
+            this.Round(precision);
             SDFWriter.WriteStartElement("pose");
-            string pos = Position[0].ToString() + " " + Position[1].ToString() + " " + Position[2].ToString();
-            string rot = Rotation[0].ToString() + " " + Rotation[1].ToString() + " " + Rotation[2].ToString();
-            SDFWriter.WriteRaw(pos + " " + rot);
+            SDFWriter.WriteRaw(this.ToString());
             SDFWriter.WriteEndElement();
         }
 
+        public string PrintMatrix()
+        {
+            int x;
+            int y;
+            string str = "Pose matrix: " + Environment.NewLine;
+            double[] dub = new double[20];
+            for (x = 1; x < 4; x++)
+            {
+                for (y = 1; y < 4; y++)
+                {
+                    str += this.matrix.get_Cell(x, y) + " ";
+                }
+                str += Environment.NewLine;
+            }
+            return str;
+        }
+
+        //TODO: Do we need this?
         public void SetAxisAngle(Inventor.Matrix R1) {
             
             /*R1.SetToIdentity();
@@ -351,19 +368,6 @@ namespace SDF
             R1.set_Cell(1, 2, -Math.Sin(0.78539816339));
             R1.set_Cell(2, 1, Math.Sin(0.78539816339));
             R1.set_Cell(2, 2, Math.Cos(0.78539816339));*/
-            int x;
-            int y;
-            string str = "Pose matrix: " + Environment.NewLine;
-            double[] dub = new double[1000];
-            for (x = 1; x < 4; x++ )
-            {
-                for (y = 1; y < 4; y++)
-                {
-                    str += R1.get_Cell(x, y) + " ";
-                }
-                str += Environment.NewLine;
-            }
-            //MessageBox.Show(str);
 
             //Axis
             double[] axis = new double[3] { 0, 0, 0};
@@ -382,7 +386,7 @@ namespace SDF
             }
 
             //Return
-            axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
+            this.axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
 
 
             ////MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);

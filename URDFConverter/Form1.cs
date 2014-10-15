@@ -214,6 +214,7 @@ namespace SDFConverter
                 WriteLine("                  Pose: " + link.Pose.ToString());
                 WriteLine("           InertiaPose: " + link.Inertial.Pose.ToString());
                 WriteLine("                  Mass: " + Mass);
+                WriteLine("       Rotation Matrix: " + System.Environment.NewLine + link.Pose.PrintMatrix());
 
                 // Add link to robot
                 robo.Links.Add(link);
