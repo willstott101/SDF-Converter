@@ -216,7 +216,7 @@ namespace SDFConverter
                 WriteLine("New Link:          --------------------------------------");
                 WriteLine("                  Name: " + link.Name);
                 WriteLine("                  Pose: " + link.Pose.ToString());
-                link.Pose = new Pose(link.Pose);
+                //link.Pose = new Pose(link.Pose);
                 WriteLine("                  Pose: " + link.Pose.ToString());
                 WriteLine("           InertiaPose: " + link.Inertial.Pose.ToString());
                 Matrix<double> M2 = DenseMatrix.OfArray(link.Inertial.InertiaMatrix);
@@ -318,7 +318,7 @@ namespace SDFConverter
                 WriteLine("              Parent: " + parent.Name);
                 WriteLine("               Child: " + child.Name);
                 WriteLine("                Pose: " + Pose.ToString());
-                Pose.SetRelative(child.Pose);
+                Pose.GetPosRelativeTo(child.Pose);
                 WriteLine("           Child Loc: " + child.Pose.ToString());
                 WriteLine("       Relative Pose: " + Pose.ToString());
                 WriteLine("                Axis: " + Axis.ToString());

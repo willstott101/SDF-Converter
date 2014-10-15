@@ -205,6 +205,7 @@ namespace SDF
     {
         public double[] Position { get; set; }
         public double[] Rotation { get; set; }
+        //TODO: Replace Rotation with a DenseMatrix
 
         //public double[] axisAngle { get; private set; }
         public Inventor.Matrix matrix {get; private set;}
@@ -283,7 +284,7 @@ namespace SDF
             return M1;
         }
 
-        public void SetRelative(Pose pose)
+        public void GetPosRelativeTo(Pose pose)
         {
             int i;
 
@@ -298,34 +299,6 @@ namespace SDF
                 Matrix<double> M1 = this.niceMatrix(M);
                 Vector<double> vec =  M1.Multiply(DenseVector.OfArray(this.Position));
                 this.Position = vec.ToArray();
-
-                #region old
-                /*
-                int x;
-                int y;
-                string str = "Pose Relativematrix: " + Environment.NewLine;
-                double[] dub = new double[1000];
-                for (x = 1; x < 4; x++)
-                {
-                    for (y = 1; y < 4; y++)
-                    {
-                        str += M.get_Cell(x, y) + " ";
-                    }
-                    str += Environment.NewLine;
-                }
-                //MessageBox.Show(str);
-
-                Vector3D[] vec = new Vector3D[3];
-                for (i = 0; i < 3; i++)
-                {
-                    vec[i].X = M.get_Cell(1, i + 1);
-                    vec[i].Y = M.get_Cell(2, i + 1);
-                    vec[i].Z = M.get_Cell(3, i + 1);
-                }
-                Vector3D output = Position[0] * vec[0] + Position[1] * vec[1] + Position[2] * vec[2];
-
-                Position = new double[] { output.X, output.Y, output.Z };*/
-                #endregion
             }
 
         }
@@ -368,53 +341,6 @@ namespace SDF
             }
             return str;
         }
-
-        //TODO: Do we need this?
-        //public void SetAxisAngle(Inventor.Matrix R1) {
-            
-        //    /*R1.SetToIdentity();
-        //    R1.set_Cell(1, 1, Math.Cos(0.78539816339));
-        //    R1.set_Cell(1, 2, -Math.Sin(0.78539816339));
-        //    R1.set_Cell(2, 1, Math.Sin(0.78539816339));
-        //    R1.set_Cell(2, 2, Math.Cos(0.78539816339));*/
-
-        //    //Axis
-        //    double[] axis = new double[3] { 0, 0, 0};
-        //    axis[0] = R1.get_Cell(2, 3) - R1.get_Cell(3, 2);
-        //    axis[1] = R1.get_Cell(3, 1) - R1.get_Cell(1, 3);
-        //    axis[2] = R1.get_Cell(1, 2) - R1.get_Cell(2, 1);
-        //    //Angle
-        //    double r = Math.Sqrt(Math.Pow(axis[1], 2) + Math.Pow(axis[2], 2));
-        //    r = Math.Sqrt(Math.Pow(axis[0], 2) + Math.Pow(r, 2));
-        //    double t = R1.get_Cell(1, 1) + R1.get_Cell(2, 2) + R1.get_Cell(3, 3);
-        //    double theta = Math.Atan2(r, t - 1);
-        //    //Normalise
-        //    int i;
-        //    for (i = 0; i < 3; i++) {
-        //        axis[i] = axis[i] / r;
-        //    }
-
-        //    //Return
-        //    this.axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
-
-
-        //    ////MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
-
-        //    /* Convert the rotation matrix into the axis-angle notation.
-
-        //        Conversion equations
-        //        ====================
-
-        //        From Wikipedia (http://en.wikipedia.org/wiki/Rotation_matrix), the conversion is given by::
-
-        //            x = Qzy-Qyz
-        //            y = Qxz-Qzx
-        //            z = Qyx-Qxy
-        //            r = hypot(x,hypot(y,z))
-        //            t = Qxx+Qyy+Qzz
-        //            theta = atan2(r,t-1)
-        //    */
-        //}
     }
 
     /// <summary>
@@ -452,10 +378,8 @@ namespace SDF
             this.Pose.Position = COM;
             this.Pose.Scale(scale);
 
-            this.Pose.SetRelative(linkpose);
+            this.Pose.GetPosRelativeTo(linkpose);
 
-            //TODO: Get rid of this..
-            //this.Pose.Rotation = new double[3] { 0, 0, 0 };
             Matrix<double> Link = linkpose.niceMatrix(linkpose.matrix);
             Matrix<double> Inertia = DenseMatrix.OfArray(this.InertiaMatrix);
             Matrix<double> M = Link * Inertia * Link.Transpose();
@@ -468,7 +392,6 @@ namespace SDF
             int i;
             for (i = 0; i < 6; i++)
             {
-                //TODO: Maybe cube?
                 InertiaVector[i] *= scale*scale;
             }
             this.ProcessVector();
@@ -806,7 +729,6 @@ namespace SDF
         public Axis Axis { get; set; }
         public Calibration Calibration { get; set; }
         public Dynamics Dynamics { get; set; }
-        public SafetyController SafetyController { get; set; }
 
         public Joint(string name, JointType jointType)
         {
@@ -903,11 +825,6 @@ namespace SDF
                 this.Limit.PrintLimitTag(SDFWriter);
             }
 
-            if (this.SafetyController != null)
-            {
-                this.SafetyController.PrintSafetyTag(SDFWriter);
-            }
-
             SDFWriter.WriteEndElement();
         }
     }
@@ -929,48 +846,6 @@ namespace SDF
 
             values = new double[3] { x, y, z };
         }
-
-        //public Axis(double x, double y, double z, Pose child)
-        //{
-        //    values = new double[3] { x, y, z };
-
-        //    //Skip if the parent Pose doesn't have enough rotation information.
-        //    if (child.axisAngle == null)
-        //    {
-        //        if (x < 0) { x *= -1; }
-        //        if (y < 0) { y *= -1; }
-        //        if (z < 0) { z *= -1; }
-
-        //        values = new double[3] { x, y, z };
-
-        //        return;
-        //    }
-
-        //    Quaternion Wg = new Quaternion(x, y, z, 0);
-        //    ////MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
-
-        //    //Quaternion Wg = new Quaternion(0, 0, 1, 0);
-
-        //    double[] Rc = child.axisAngle;
-        //    Quaternion qC = new Quaternion(new Vector3D(Rc[1], Rc[2], Rc[3]), Rc[0]*180/Math.PI);
-
-        //    Quaternion qC1 = qC;
-        //    qC1.Invert();
-
-        //    Quaternion Wc = qC * (Wg * qC1);
-
-        //    Quaternion Qt = new Quaternion(0, 0.707120, 0, 0.70712);
-        //    Quaternion Wt = new Quaternion(1, 0, 0, 0);
-        //    Quaternion Qt1 = Qt;
-        //    Qt1.Invert();
-        //    Quaternion Wt_ = Qt * Wt * Qt1;
-
-        //    values = new double[3] { Wc.X, Wc.Y, Wc.Z };
-
-        //    if (values[0] < 0) { values[0] *= -1; }
-        //    if (values[1] < 0) { values[1] *= -1; }
-        //    if (values[2] < 0) { values[2] *= -1; }
-        //}
 
         public void Round(int precision)
         {
@@ -1053,36 +928,6 @@ namespace SDF
             SDFWriter.WriteStartElement("dynamics");
             SDFWriter.WriteAttributeString("damping", this.Damping.ToString());
             SDFWriter.WriteAttributeString("friction", this.Friction.ToString());
-            SDFWriter.WriteEndElement();
-        }
-    }
-
-    /// <summary>
-    /// 
-    /// </summary>
-    [Serializable]
-    public class SafetyController
-    {
-        public double SoftLowerLimit { get; set; }
-        public double SoftUpperLimit { get; set; }
-        public double KPosition { get; set; }
-        public double KVelocity { get; set; }
-
-        public SafetyController(double softLowerLimit, double softUpperLimit, double kPosition, double kVelocity)
-        {
-            this.SoftLowerLimit = softLowerLimit;
-            this.SoftUpperLimit = softUpperLimit;
-            this.KPosition = kPosition;
-            this.KVelocity = kVelocity;
-        }
-
-        public void PrintSafetyTag(XmlTextWriter SDFWriter)
-        {
-            SDFWriter.WriteStartElement("safety_controller");
-            SDFWriter.WriteAttributeString("soft_lower_limit", this.SoftLowerLimit.ToString());
-            SDFWriter.WriteAttributeString("soft_upper_limit", this.SoftUpperLimit.ToString());
-            SDFWriter.WriteAttributeString("k_position", this.KPosition.ToString());
-            SDFWriter.WriteAttributeString("k_velocity", this.KVelocity.ToString());
             SDFWriter.WriteEndElement();
         }
     }
