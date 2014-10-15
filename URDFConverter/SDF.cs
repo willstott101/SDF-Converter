@@ -208,7 +208,7 @@ namespace SDF
         public double[] axisAngle { get; private set; }
         public Inventor.Matrix matrix {get; private set;}
 
-        private int internalprecision = 8;
+        public int internalprecision = 8;
 
         //If rotation given, we need more info
         public Pose(Inventor.Matrix R1, int precision, double positionScale = 1)
@@ -243,7 +243,7 @@ namespace SDF
             SetAxisAngle(R1);
         }
 
-        public Pose(double x, double y, double z, int precision)
+        public Pose(double x, double y, double z, int precision, double positionScale = 1)
         {
             Position = new double[3] { x, y, z };
             Rotation = new double[3] { 0, 0, 0 };
@@ -266,7 +266,7 @@ namespace SDF
 
             for (i = 0; i < 3; i++)
             {
-                Position[i] -= pose.Position[i];
+                pose.Position[i] -= Position[i];
             }
 
             if (pose.matrix != null)
@@ -395,17 +395,30 @@ namespace SDF
         public double Mass { get; set; }
         public double[,] InertiaMatrix { get; private set; }
         public double[] InertiaVector { get; private set; }
+        public Pose Pose { get; private set; }
 
         /// <summary>
         /// Set link's mass and moment of inertia.
         /// </summary>
         /// <param name="mass">Link mass (Kg).</param>
         /// <param name="inertiaMatrix">3x3 element moment of inertia matrix (Kg*m^2) [Ixx Ixy Ixz; Ixy Iyy Iyz; Ixz Iyz Izz]</param>
-        public Inertial(double mass, double[,] inertiaMatrix)
+        public Inertial(double mass, double[,] inertiaMatrix, double[] COM, Pose linkpose, double scale = 1)
         {
             this.Mass = mass;
             this.InertiaMatrix = inertiaMatrix;
             this.ProcessMatrix();
+            if (scale != 1) {
+                this.Scale(scale);
+            }
+
+            if (linkpose.matrix != null) {
+                this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
+            }
+            else
+            {
+                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision);
+            }
+            this.Pose.Position = COM;
         }
 
         /// <summary>
@@ -413,12 +426,36 @@ namespace SDF
         /// </summary>
         /// <param name="mass">Link mass (Kg).</param>
         /// <param name="inertiaVector">1x6 vector of principal moments and products of inertia (Kg*m^2) [Ixx Ixy Ixz Iyy Iyz Izz]</param>
-        public Inertial(double mass, double[] inertiaVector)
+        public Inertial(double mass, double[] inertiaVector, double[] COM, Pose linkpose, double scale)
         {
             this.Mass = mass;
             this.InertiaVector = inertiaVector;
             this.ProcessVector();
+            if (scale != 1)
+            {
+                this.Scale(scale);
+            }
+
+            if (linkpose.matrix != null)
+            {
+                this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
+            }
+            else
+            {
+                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
+            }
+            this.Pose.Position = COM;
         }
+
+        public void Scale(double scale)
+        {
+            int i;
+            for (i = 0; i < 6; i++)
+            {
+                InertiaVector[i] *= scale;
+            }
+            this.ProcessVector();
+        } 
 
         public void ProcessVector()
         {
@@ -445,7 +482,8 @@ namespace SDF
             {
                 InertiaVector[i] = Math.Round(InertiaVector[i], precision);
             }
-            this.ProcessMatrix();
+            this.ProcessVector();
+            this.Mass = Math.Round(this.Mass, precision);
         }
 
         public void PrintInertialTag(XmlTextWriter SDFWriter, int precision)
@@ -459,6 +497,7 @@ namespace SDF
             this.Round(precision);
             SDFWriter.WriteStartElement("inertial");
             SDFWriter.WriteElementString("mass", this.Mass.ToString());
+            this.Pose.PrintPoseTag(SDFWriter, precision);
             SDFWriter.WriteStartElement("inertia");
             SDFWriter.WriteElementString("ixx", this.InertiaVector[0].ToString());
             SDFWriter.WriteElementString("ixy", this.InertiaVector[1].ToString());

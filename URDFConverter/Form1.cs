@@ -197,18 +197,12 @@ namespace SDFConverter
                 //TODO: Set a Inertial pose.
                 //Pos of C.O.M., Rot of Link.
                 oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
-
-                //Round to a sane number of decimal places.
-                Mass = Math.Round(Mass, precision);
-                int i = 0;
-                for (i = 0; i < 6; i++)
-                {
-                    iXYZ[i] *= scale;
-                    iXYZ[i] = Math.Round(iXYZ[i], precision);
-                }
+                Inventor.Point COMp = oCompOccur.MassProperties.CenterOfMass;
+                double[] COM = new double[3] {COMp.X, COMp.Y, COMp.Z};
 
                 // Set Moments of Inertia
-                link.Inertial = new Inertial(Mass, iXYZ);
+                //Takes precision from link.Pose.
+                link.Inertial = new Inertial(Mass, iXYZ, COM, link.Pose, scale);
                 //link.Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
 
                 // Set the URI for the link's model.
