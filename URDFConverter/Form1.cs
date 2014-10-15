@@ -53,8 +53,8 @@ namespace SDFConverter
                 }
                 catch (Exception ex2)
                 {
-                    MessageBox.Show(ex2.ToString());
-                    MessageBox.Show("Unable to get or start Inventor");
+                    ////MessageBox.Show(ex2.ToString());
+                    ////MessageBox.Show("Unable to get or start Inventor");
                 }
             }
 
@@ -194,7 +194,6 @@ namespace SDFConverter
 
                 // Get Moments of Inertia.
                 double[] iXYZ = new double[6];
-                //TODO: Set a Inertial pose.
                 //Pos of C.O.M., Rot of Link.
                 oCompOccur.MassProperties.XYZMomentsOfInertia(out iXYZ[0], out iXYZ[3], out iXYZ[5], out iXYZ[1], out iXYZ[4], out iXYZ[2]); // Ixx, Iyy, Izz, Ixy, Iyz, Ixz -> Ixx, Ixy, Ixz, Iyy, Iyz, Izz
                 Inventor.Point COMp = oCompOccur.MassProperties.CenterOfMass;
@@ -203,7 +202,6 @@ namespace SDFConverter
                 // Set Moments of Inertia
                 //Takes precision from link.Pose.
                 link.Inertial = new Inertial(Mass, iXYZ, COM, link.Pose, scale);
-                //link.Inertial.XYZ = FindCenterOfMassOffset(oCompOccur);
 
                 // Set the URI for the link's model.
                 String URI = "model://<MODELNAME>/meshes/" + link.Name + ".stl";
@@ -214,6 +212,7 @@ namespace SDFConverter
                 WriteLine("New Link:          --------------------------------------");
                 WriteLine("                  Name: " + link.Name);
                 WriteLine("                  Pose: " + link.Pose.ToString());
+                WriteLine("           InertiaPose: " + link.Inertial.Pose.ToString());
                 WriteLine("                  Mass: " + Mass);
 
                 // Add link to robot
@@ -231,6 +230,8 @@ namespace SDFConverter
                     WriteLine("Skipped a suppressed constraint.");
                     continue;
                 }
+
+
 
                 //Set some starting variables.
                 String name = constraint.Name;
@@ -275,13 +276,25 @@ namespace SDFConverter
                 }
                 Pose Pose;
                 Axis Axis;
+                Inventor.Point Geomcenter;
+                if (constraint is InsertConstraint)
+                {
+                    Circle circ = (Circle)constraint.GeometryOne;
+                    Geomcenter = circ.Center;
+                }
+                else
+                {
+                    //TODO: Mate constraint
+                    Geomcenter = null;
+                }
 
                 WriteLine("New joint:          --------------------------------------");
                 WriteLine("                Name: " + name);
                 WriteLine("              Parent: " + parent.Name);
                 WriteLine("               Child: " + child.Name);
-                WriteLine("            Location: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
-                Pose = new Pose(DOFCenter.X, DOFCenter.Y, DOFCenter.Z, precision);
+                WriteLine("           DOFCenter: " + DOFCenter.X + ", " + DOFCenter.Y + ", " + DOFCenter.Z);
+                WriteLine("          GeomCenter: " + Geomcenter.X + ", " + Geomcenter.Y + ", " + Geomcenter.Z);
+                Pose = new Pose(Geomcenter.X, Geomcenter.Y, Geomcenter.Z, precision);
                 Pose.Scale(scale);
                 Pose.SetRelative(child.Pose);
                 WriteLine("           Child Loc: " + child.Pose.ToString());

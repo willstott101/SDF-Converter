@@ -10,7 +10,8 @@ using System.Windows.Media.Media3D;
 using System.Windows.Forms;
 
 
-using MathNet.Numerics;
+using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.LinearAlgebra.Double;
 using System.Text.RegularExpressions;
 
 namespace SDF
@@ -266,7 +267,7 @@ namespace SDF
 
             for (i = 0; i < 3; i++)
             {
-                pose.Position[i] -= Position[i];
+                Position[i] = Position[i] - pose.Position[i];
             }
 
             if (pose.matrix != null)
@@ -274,6 +275,21 @@ namespace SDF
                 //pose.matrix*Position
                 Inventor.Matrix M = pose.matrix;
 
+                //TODO: Handle Cardanian Rotations
+                Matrix<double> M1 = DenseMatrix.OfArray(new double[,] {
+                    {M.get_Cell(1,1), M.get_Cell(1,2), M.get_Cell(1,3)},
+                    {M.get_Cell(2,1), M.get_Cell(2,2), M.get_Cell(2,3)},
+                    {M.get_Cell(3,1), M.get_Cell(3,2), M.get_Cell(3,3)}
+                });
+               MessageBox.Show( M1.ToMatrixString() );
+
+                Vector<double> vec =  M1.Multiply(DenseVector.OfArray(this.Position));
+
+                MessageBox.Show(vec.ToVectorString());
+
+                Position = vec.ToArray();
+
+                /*
                 int x;
                 int y;
                 string str = "Pose Relativematrix: " + Environment.NewLine;
@@ -286,7 +302,7 @@ namespace SDF
                     }
                     str += Environment.NewLine;
                 }
-                MessageBox.Show(str);
+                //MessageBox.Show(str);
 
                 Vector3D[] vec = new Vector3D[3];
                 for (i = 0; i < 3; i++)
@@ -297,7 +313,7 @@ namespace SDF
                 }
                 Vector3D output = Position[0] * vec[0] + Position[1] * vec[1] + Position[2] * vec[2];
 
-                Position = new double[] { output.X, output.Y, output.Z };
+                Position = new double[] { output.X, output.Y, output.Z };*/
             }
             
         }
@@ -345,7 +361,7 @@ namespace SDF
                 }
                 str += Environment.NewLine;
             }
-            MessageBox.Show(str);
+            //MessageBox.Show(str);
 
             //Axis
             double[] axis = new double[3] { 0, 0, 0};
@@ -367,7 +383,7 @@ namespace SDF
             axisAngle = new double[] { theta, axis[0], axis[1], axis[2]};
 
 
-            //MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
+            ////MessageBox.Show("Pose Axis-Angle: " + Environment.NewLine + theta+ " " + axis[0]+ " " + axis[1]+ " " + axis[2]);
 
             /* Convert the rotation matrix into the axis-angle notation.
 
@@ -407,18 +423,23 @@ namespace SDF
             this.Mass = mass;
             this.InertiaMatrix = inertiaMatrix;
             this.ProcessMatrix();
+
             if (scale != 1) {
                 this.Scale(scale);
             }
 
             if (linkpose.matrix != null) {
+
                 this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
+                this.Pose.Position = COM;
+                this.Pose.Scale(scale);
             }
             else
             {
-                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision);
+                this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
             }
-            this.Pose.Position = COM;
+            this.Pose.SetRelative(linkpose);
+            this.Pose.Rotation = new double[3] { 0, 0, 0 };
         }
 
         /// <summary>
@@ -431,6 +452,7 @@ namespace SDF
             this.Mass = mass;
             this.InertiaVector = inertiaVector;
             this.ProcessVector();
+
             if (scale != 1)
             {
                 this.Scale(scale);
@@ -439,12 +461,14 @@ namespace SDF
             if (linkpose.matrix != null)
             {
                 this.Pose = new Pose(linkpose.matrix, linkpose.internalprecision, scale);
+                this.Pose.Position = COM;
             }
             else
             {
                 this.Pose = new Pose(COM[0], COM[1], COM[2], linkpose.internalprecision, scale);
             }
-            this.Pose.Position = COM;
+            this.Pose.SetRelative(linkpose);
+            this.Pose.Rotation = new double[3] { 0,0,0};
         }
 
         public void Scale(double scale)
@@ -452,6 +476,7 @@ namespace SDF
             int i;
             for (i = 0; i < 6; i++)
             {
+                //TODO: Maybe cube?
                 InertiaVector[i] *= scale;
             }
             this.ProcessVector();
@@ -480,10 +505,10 @@ namespace SDF
             int i;
             for (i = 0; i < 6;i++ )
             {
-                InertiaVector[i] = Math.Round(InertiaVector[i], precision);
+                /*InertiaVector[i] = Math.Round(InertiaVector[i], precision);*/
             }
             this.ProcessVector();
-            this.Mass = Math.Round(this.Mass, precision);
+            //this.Mass = Math.Round(this.Mass, precision);
         }
 
         public void PrintInertialTag(XmlTextWriter SDFWriter, int precision)
@@ -930,7 +955,7 @@ namespace SDF
             }
 
             Quaternion Wg = new Quaternion(x, y, z, 0);
-            //MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
+            ////MessageBox.Show(x+" "+ y+" "+ z+" "+ 0);
 
             //Quaternion Wg = new Quaternion(0, 0, 1, 0);
 
