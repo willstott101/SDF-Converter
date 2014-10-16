@@ -144,7 +144,9 @@ namespace SDFConverter
 
             //Recursively make a list of all component parts.
             List<AssemblyComponentDefinition> loopList = new List<AssemblyComponentDefinition>();
+            //TODO: Store OccuranceName vs Pose for assemblies.
             loopList.Add((AssemblyComponentDefinition)oAsmCompDef);
+            //Recursively make a list of all component parts.
             while (loopList.Count > 0)
             {
                 AssemblyComponentDefinition loopAsmCompDef = loopList[0];
@@ -192,6 +194,7 @@ namespace SDFConverter
 
                 // Set position and rotation
                 //TODO: Check globalised scale
+                //TODO: Set pose relative to parent occurance.
                 link.Pose = new Pose(R1, precision, scale);
 
                 // Get Moments of Inertia.
@@ -302,6 +305,7 @@ namespace SDFConverter
                     //Handle Mate Constraints (Prismatic)
                     Inventor.Line line = (Line)constraint.GeometryOne;
                     Geomcenter = line.RootPoint;
+                    //TODO: Find out if axis is global, or local to assembly.
                     Axis = new Axis(line.Direction.X, line.Direction.Y, line.Direction.Z);
                     type = JointType.Prismatic;
                 }
